@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   app:
     build:
@@ -59,14 +57,12 @@ services:
       - laravel
 
   tileserver:
-    image: tileserver/tileserver-gl:latest
+    image: maptiler/tileserver-gl:latest
     container_name: laravel_tileserver
     ports:
       - "8082:80"
     volumes:
       - ./tiles:/data
-    environment:
-      PMTILES_BUCKET_URL: https://example.com/tiles/
     networks:
       - laravel
 
