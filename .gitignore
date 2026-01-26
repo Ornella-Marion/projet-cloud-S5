@@ -24,4 +24,12 @@
 Thumbs.db
 
 
+# Fichiers Office et temporaires
+*.xlsx
+*.xls
+*.xlsm
+*.pdf
+*.pptx
+toDo/
+
 
