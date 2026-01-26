@@ -56,15 +56,15 @@ services:
     networks:
       - laravel
 
-  # tileserver:
-  #   image: maptiler/tileserver-gl:v4.3
-  #   container_name: laravel_tileserver
-  #   ports:
-  #     - "8082:80"
-  #   volumes:
-  #     - ./tiles:/data
-  #   networks:
-  #     - laravel
+  tileserver:
+    image: maptiler/tileserver-gl:latest
+    container_name: laravel_tileserver
+    ports:
+      - "8082:80"
+    volumes:
+      - ./tiles:/data
+    networks:
+      - laravel
 
 networks:
   laravel:
