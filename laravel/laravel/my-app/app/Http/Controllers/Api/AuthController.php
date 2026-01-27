@@ -10,6 +10,11 @@ use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
+    // Lister tous les utilisateurs (pour le signalement)
+    public function listUsers()
+    {
+        return response()->json(User::select('id', 'name', 'email')->get());
+    }
     private const MAX_LOGIN_ATTEMPTS = 3;
     private const SESSION_DURATION = 86400; // 24 heures
 

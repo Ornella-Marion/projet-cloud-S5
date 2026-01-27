@@ -34,6 +34,7 @@ import { ref } from 'vue';
 import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonItem, IonLabel, IonInput, IonButton, IonText } from '@ionic/vue';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase';
+import api from '../services/api';
 
 const name = ref('');
 const email = ref('');
@@ -62,6 +63,17 @@ const register = async () => {
   }
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email.value, password.value);
+    // Synchroniser avec le backend Laravel
+    try {
+      await api.post('/auth/signup', {
+        name: name.value,
+        email: email.value,
+        password: password.value
+      });
+    } catch (e) {
+      // Optionnel : afficher une erreur si la synchro backend échoue
+      console.error('Erreur lors de la synchro Laravel:', e);
+    }
     window.location.href = '/login';
   } catch (error: any) {
     if (error.code === 'auth/email-already-in-use') {

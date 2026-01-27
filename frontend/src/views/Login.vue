@@ -57,7 +57,18 @@ const login = async () => {
   }
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email.value, password.value);
-    // Redirection avec router (SPA friendly)
+    // Synchroniser avec le backend Laravel pour obtenir le token
+    try {
+      const res = await (await import('../services/api')).default.post('/auth/login', {
+        email: email.value,
+        password: password.value
+      });
+      localStorage.setItem('token', res.data.token);
+    } catch (e) {
+      errors.value.push('Connexion Laravel échouée.');
+      loading.value = false;
+      return;
+    }
     window.location.href = '/dashboard';
   } catch (error: any) {
     if (error.code === 'auth/user-not-found') {

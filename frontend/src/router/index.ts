@@ -5,6 +5,8 @@ import Login from '../views/Login.vue'
 import Register from '../views/Register.vue'
 import ForgotPassword from '../views/ForgotPassword.vue'
 import Dashboard from '../views/Dashboard.vue'
+import Report from '../views/Report.vue';
+import ReportsList from '../views/ReportsList.vue';
 import { auth } from '../firebase'
 import { onAuthStateChanged } from 'firebase/auth'
 
@@ -43,6 +45,18 @@ const routes: Array<RouteRecordRaw> = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/report',
+    name: 'Report',
+    component: Report,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/reports-list',
+    name: 'ReportsList',
+    component: ReportsList,
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/login'
   }
@@ -53,23 +67,36 @@ const router = createRouter({
   routes
 })
 
-// Guard de navigation
-router.beforeEach((to, from, next) => {
-  const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
+// Guard de navigation (corrigé pour éviter les appels multiples à onAuthStateChanged)
+let isAuthChecked = false;
+let currentUser: any = null;
+onAuthStateChanged(auth, (user) => {
+  isAuthChecked = true;
+  currentUser = user;
+});
 
-  // Vérifier l'état d'authentification
-  onAuthStateChanged(auth, (user) => {
-    if (requiresAuth && !user) {
-      // Rediriger vers login si la route nécessite une auth et user non connecté
-      next('/login')
-    } else if (!requiresAuth && user && (to.path === '/login' || to.path === '/register')) {
-      // Rediriger vers dashboard si user connecté et essaie d'accéder à login/register
-      next('/dashboard')
+router.beforeEach((to, from, next) => {
+  const requiresAuth = to.matched.some(record => record.meta.requiresAuth);
+  // Si l'état d'auth n'est pas encore connu, attendre
+  if (!isAuthChecked) {
+    const unwatch = onAuthStateChanged(auth, (user) => {
+      isAuthChecked = true;
+      currentUser = user;
+      unwatch();
+      proceed();
+    });
+  } else {
+    proceed();
+  }
+  function proceed() {
+    if (requiresAuth && !currentUser) {
+      next('/login');
+    } else if (!requiresAuth && currentUser && (to.path === '/login' || to.path === '/register')) {
+      next('/dashboard');
     } else {
-      // Continuer normalement
-      next()
+      next();
     }
-  })
-})
+  }
+});
 
 export default router
