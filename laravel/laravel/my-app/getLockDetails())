@@ -1,0 +1,1 @@
+"Lock Details: " . json_encode($user- . PHP_EOL;

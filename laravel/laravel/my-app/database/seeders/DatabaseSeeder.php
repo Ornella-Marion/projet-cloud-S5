@@ -42,5 +42,14 @@ class DatabaseSeeder extends Seeder
             'role' => 'user',
             'is_active' => true,
         ]);
+
+        // Utilisateur pour test Postman
+        User::create([
+            'name' => 'User Example',
+            'email' => 'user@example.com',
+            'password' => Hash::make('password123'),
+            'role' => 'user',
+            'is_active' => true,
+        ]);
     }
 }
