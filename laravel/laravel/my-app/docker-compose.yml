@@ -1,3 +1,5 @@
+version: '3.9'
+
 services:
   app:
     build:
@@ -6,17 +8,31 @@ services:
     container_name: laravel_app
     volumes:
       - .:/var/www/html
+    environment:
+      APP_ENV: local
+      APP_DEBUG: true
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: laravel
+      DB_USERNAME: laravel
+      DB_PASSWORD: root
+      REDIS_HOST: redis
+    depends_on:
+      - postgres
+      - redis
     networks:
       - laravel
 
-  web:
-    image: nginx:1.25
-    container_name: laravel_nginx
-    ports:
-      - "8000:80"
+  react:
+    image: node:20
+    container_name: react_frontend
+    working_dir: /app
     volumes:
-      - .:/var/www/html
-      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      - ./frontend:/app
+    command: ["npm", "run", "dev"]
+    ports:
+      - "3000:5173"
     depends_on:
       - app
     networks:
@@ -36,6 +52,14 @@ services:
     networks:
       - laravel
 
+  redis:
+    image: redis:7-alpine
+    container_name: laravel_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - laravel
+
   swagger:
     image: swaggerapi/swagger-ui:v5.10.3
     container_name: laravel_swagger
@@ -48,14 +72,6 @@ services:
     networks:
       - laravel
 
-  redis:
-    image: redis:7-alpine
-    container_name: laravel_redis
-    ports:
-      - "6379:6379"
-    networks:
-      - laravel
-
   tileserver:
     image: maptiler/tileserver-gl:latest
     container_name: laravel_tileserver
@@ -63,6 +79,15 @@ services:
       - "8082:80"
     volumes:
       - ./tiles:/data
+    command: ["--port", "80", "/data/antananarivo.mbtiles"]
+    networks:
+      - laravel
+
+  adminer:
+    image: adminer:latest
+    container_name: laravel_adminer
+    ports:
+      - "8083:8080"
     networks:
       - laravel
 
