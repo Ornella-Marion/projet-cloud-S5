@@ -6,10 +6,43 @@
           <ion-back-button></ion-back-button>
         </ion-buttons>
         <ion-title>Carte des Routes - Antananarivo</ion-title>
+        <ion-buttons slot="end">
+          <!-- Indicateur de connexion -->
+          <ion-chip :color="isConnected ? 'success' : 'warning'" class="connection-chip">
+            <ion-icon :name="isConnected ? 'cloud-done' : 'cloud-offline'"></ion-icon>
+            <ion-label>{{ isConnected ? 'En ligne' : 'Hors ligne' }}</ion-label>
+          </ion-chip>
+          <!-- Bouton de rafraîchissement -->
+          <ion-button @click="refreshData" :disabled="isLoading">
+            <ion-icon slot="icon-only" name="refresh" :class="{ 'rotating': isLoading }"></ion-icon>
+          </ion-button>
+        </ion-buttons>
       </ion-toolbar>
     </ion-header>
     <ion-content class="map-content" fullscreen>
+      <!-- Indicateur de chargement -->
+      <div v-if="isLoading" class="loading-overlay">
+        <ion-spinner name="crescent" color="primary"></ion-spinner>
+        <p>Chargement des données...</p>
+      </div>
+      
       <div id="map" ref="mapContainer" class="map-container"></div>
+      
+      <!-- Statistiques rapides -->
+      <div v-if="statistics" class="stats-bar">
+        <div class="stat-item">
+          <span class="stat-value">{{ statistics.total_roads }}</span>
+          <span class="stat-label">Routes</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ statistics.total_reports }}</span>
+          <span class="stat-label">Signalements</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">{{ formatBudgetShort(statistics.total_budget) }}</span>
+          <span class="stat-label">Budget Total</span>
+        </div>
+      </div>
       
       <!-- Contrôles de zoom -->
       <div class="zoom-controls">
@@ -22,7 +55,85 @@
         <ion-button class="zoom-btn reset-btn" @click="resetZoom">
           <ion-icon name="home"></ion-icon>
         </ion-button>
+        <ion-button class="zoom-btn locate-btn" @click="getUserLocation" title="Ma position">
+          <ion-icon name="navigate"></ion-icon>
+        </ion-button>
+        <ion-button class="zoom-btn report-btn" @click="openReportModal" title="Signaler un problème">
+          <ion-icon name="alert-circle"></ion-icon>
+        </ion-button>
       </div>
+
+      <!-- Filtre des signalements -->
+      <div class="filter-controls">
+        <ion-segment v-model="reportFilter" @ionChange="applyReportFilter">
+          <ion-segment-button value="all">
+            <ion-label>Tous</ion-label>
+          </ion-segment-button>
+          <ion-segment-button value="mine">
+            <ion-label>Mes signalements</ion-label>
+          </ion-segment-button>
+        </ion-segment>
+      </div>
+
+      <!-- Modal de signalement rapide -->
+      <ion-modal :is-open="showReportModal" @didDismiss="showReportModal = false">
+        <ion-header>
+          <ion-toolbar>
+            <ion-buttons slot="start">
+              <ion-button @click="showReportModal = false">Fermer</ion-button>
+            </ion-buttons>
+            <ion-title>Signaler un problème</ion-title>
+          </ion-toolbar>
+        </ion-header>
+        <ion-content class="ion-padding">
+          <div v-if="currentLocation" class="location-info">
+            <ion-icon name="location"></ion-icon>
+            <span>Position: {{ currentLocation.lat.toFixed(6) }}, {{ currentLocation.lng.toFixed(6) }}</span>
+          </div>
+          
+          <ion-item>
+            <ion-label position="floating">Route (optionnel)</ion-label>
+            <ion-select v-model="reportForm.roadId">
+              <ion-select-option :value="null">-- Aucune route --</ion-select-option>
+              <ion-select-option v-for="road in roads" :key="road.id" :value="road.id">
+                {{ road.designation }}
+              </ion-select-option>
+            </ion-select>
+          </ion-item>
+          
+          <ion-item>
+            <ion-label position="floating">Type de problème</ion-label>
+            <ion-select v-model="reportForm.targetType">
+              <ion-select-option value="road">Route endommagée</ion-select-option>
+              <ion-select-option value="signalisation">Signalisation</ion-select-option>
+              <ion-select-option value="eclairage">Éclairage</ion-select-option>
+              <ion-select-option value="autre">Autre</ion-select-option>
+            </ion-select>
+          </ion-item>
+          
+          <ion-item>
+            <ion-label position="floating">Description du problème</ion-label>
+            <ion-textarea v-model="reportForm.reason" :rows="4"></ion-textarea>
+          </ion-item>
+          
+          <ion-button expand="block" color="danger" @click="submitQuickReport" :disabled="reportLoading">
+            <ion-spinner v-if="reportLoading" name="crescent"></ion-spinner>
+            <span v-else>Envoyer le signalement</span>
+          </ion-button>
+          
+          <div v-if="reportError" class="error-message">
+            <ion-text color="danger">{{ reportError }}</ion-text>
+          </div>
+          <div v-if="reportSuccess" class="success-message">
+            <ion-text color="success">{{ reportSuccess }}</ion-text>
+          </div>
+          
+          <div v-if="isOfflineMode" class="offline-notice">
+            <ion-icon name="cloud-offline"></ion-icon>
+            <span>Mode hors ligne - Le signalement sera synchronisé automatiquement</span>
+          </div>
+        </ion-content>
+      </ion-modal>
 
       <!-- Panneau d'informations des routes -->
       <div :class="['roads-info-panel', { collapsed: panelCollapsed }]">
@@ -37,10 +148,11 @@
         <div v-if="!panelCollapsed" class="roads-list-wrapper">
           <ion-list class="roads-list">
             <ion-item v-for="(road, index) in roads" :key="road.id" @click="centerMapOnRoad(road)" class="road-info-item">
-              <ion-icon slot="start" name="location" class="road-icon"></ion-icon>
+              <ion-icon slot="start" :name="isRoadReported(road.id) ? 'warning' : 'location'" :class="isRoadReported(road.id) ? 'road-icon reported' : 'road-icon normal'"></ion-icon>
               <ion-label>
                 <h4>{{ index + 1 }}. {{ road.designation }}</h4>
                 <p>📍 Lat: {{ Number(road.latitude).toFixed(4) }}, Lon: {{ Number(road.longitude).toFixed(4) }}</p>
+                <p v-if="isRoadReported(road.id)" class="report-status">⚠️ Signalée</p>
               </ion-label>
             </ion-item>
           </ion-list>
@@ -51,20 +163,40 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem, IonLabel, IonButton, IonButtons, IonIcon, IonBackButton } from '@ionic/vue';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { useRouter } from 'vue-router';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem, IonLabel, IonButton, IonButtons, IonIcon, IonBackButton, IonSegment, IonSegmentButton, IonModal, IonSelect, IonSelectOption, IonTextarea, IonSpinner, IonText, IonInput, IonBadge, IonChip } from '@ionic/vue';
 import { addIcons } from 'ionicons';
-import { add, remove, home, map as mapIcon, location, list, alertCircle, chevronUpOutline, chevronDownOutline, navigate } from 'ionicons/icons';
+import { add, remove, home, map as mapIcon, location, list, alertCircle, chevronUpOutline, chevronDownOutline, navigate, warning, cloudOffline, statsChart, business, cash, calendar, refresh, cloudDone } from 'ionicons/icons';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from '../services/api';
 import { Geolocation } from '@capacitor/geolocation';
+import { useUserRole } from '../composables/useUserRole';
+import { createReportWithOfflineSupport, isOnline, getPendingCount } from '../services/offlineSync';
+import { 
+  fetchRoadsWithDetails, 
+  fetchStatistics, 
+  subscribeToRoads, 
+  subscribeToReports,
+  unsubscribeAll,
+  initConnectivityManager,
+  type RoadDetails,
+  type Statistics
+} from '../services/firebaseSync';
 
 // Enregistrer les icônes
 addIcons({
-  add, remove, home, map: mapIcon, location, list, alertCircle, navigate,
+  add, remove, home, map: mapIcon, location, list, alertCircle, navigate, warning,
   'chevron-up-outline': chevronUpOutline,
-  'chevron-down-outline': chevronDownOutline
+  'chevron-down-outline': chevronDownOutline,
+  'cloud-offline': cloudOffline,
+  'cloud-done': cloudDone,
+  'stats-chart': statsChart,
+  'business': business,
+  'cash': cash,
+  'calendar': calendar,
+  'refresh': refresh
 });
 
 // Corriger les icônes par défaut de Leaflet pour Vite
@@ -118,14 +250,63 @@ interface Road {
   area: number;
 }
 
+interface RoadWithDetails extends Road {
+  created_at?: string;
+  updated_at?: string;
+  reports_count?: number;
+  roadwork?: {
+    budget: number;
+    finished_at: string;
+    status: string | null;
+    status_percentage: number | null;
+    enterprise: string | null;
+  } | null;
+}
+
+interface Report {
+  id: number;
+  user_id: number;
+  road_id?: number | null;
+  target_type: string;
+  report_date: string;
+  reason: string;
+  created_at: string;
+  user?: any;
+  road?: Road;
+}
+
 const mapContainer = ref<HTMLElement | null>(null);
 const roads = ref<Road[]>([]);
+const roadsWithDetails = ref<RoadWithDetails[]>([]);
+const reports = ref<Report[]>([]);
+const myReports = ref<Report[]>([]);
 const panelCollapsed = ref(false);
+const statistics = ref<Statistics | null>(null);
+const isConnected = ref(navigator.onLine);
+const isLoading = ref(false);
+const lastSyncTime = ref<Date | null>(null);
 let map: L.Map | null = null;
 let markerGroup: L.FeatureGroup | null = null;
 const markers: { [key: number]: any } = {};
 let userMarker: L.Marker | null = null;
 let userCircle: L.Circle | null = null;
+
+// Filtre des signalements
+const reportFilter = ref<'all' | 'mine'>('all');
+const { userData } = useUserRole();
+
+// Modal de signalement
+const showReportModal = ref(false);
+const currentLocation = ref<{ lat: number; lng: number } | null>(null);
+const reportForm = ref({
+  roadId: null as number | null,
+  targetType: 'road',
+  reason: ''
+});
+const reportLoading = ref(false);
+const reportError = ref('');
+const reportSuccess = ref('');
+const isOfflineMode = ref(!isOnline());
 
 // Créer un icône personnalisé pour l'utilisateur
 const createUserIcon = () => {
@@ -230,29 +411,59 @@ const getUserLocation = async () => {
   }
 };
 
-// Charger les routes depuis l'API
-const fetchRoads = async () => {
+// Charger les routes depuis l'API avec détails complets et cache
+const fetchRoads = async (forceRefresh = false) => {
+  isLoading.value = true;
+  
   try {
-    const response = await api.get('/roads');
-    // Convertir les coordonnées en nombres
-    roads.value = response.data.map((road: any) => ({
+    // 1. Récupérer les routes avec détails (utilise cache + Firebase sync)
+    const roadsData = await fetchRoadsWithDetails(forceRefresh);
+    
+    // Stocker les détails
+    roadsWithDetails.value = roadsData.map((road: any) => ({
       ...road,
       latitude: typeof road.latitude === 'string' ? parseFloat(road.latitude) : road.latitude,
       longitude: typeof road.longitude === 'string' ? parseFloat(road.longitude) : road.longitude,
       area: typeof road.area === 'string' ? parseFloat(road.area) : road.area,
     }));
-    console.log('Routes chargées :', roads.value.length, roads.value[0]);
+    
+    // Copier pour la liste simple
+    roads.value = roadsWithDetails.value;
+    
+    console.log('🗺️ Routes avec détails chargées:', roadsWithDetails.value.length);
+    
+    // 2. Récupérer les signalements
+    try {
+      const reportsResponse = await api.get('/reports');
+      reports.value = reportsResponse.data;
+      console.log('📋 Signalements chargés:', reports.value.length);
+    } catch (e) {
+      console.warn('⚠️ Impossible de charger les signalements (mode hors ligne?):', e);
+    }
+    
+    // 3. Récupérer les statistiques
+    const stats = await fetchStatistics(forceRefresh);
+    if (stats) {
+      statistics.value = stats;
+      console.log('📊 Statistiques chargées:', stats);
+    }
+    
+    // Mettre à jour l'heure de dernière sync
+    lastSyncTime.value = new Date();
     
     // Créer un groupe pour les marqueurs
     if (!markerGroup && map) {
       markerGroup = L.featureGroup().addTo(map);
+    } else if (markerGroup) {
+      // Vider les marqueurs existants
+      markerGroup.clearLayers();
     }
     
     // Ajouter les marqueurs sur la carte
     roads.value.forEach(road => {
       addMarkerToMap(road);
     });
-    
+
     // Ajuster automatiquement la vue pour voir tous les marqueurs
     if (roads.value.length > 0 && markerGroup) {
       setTimeout(() => {
@@ -260,58 +471,230 @@ const fetchRoads = async () => {
       }, 500);
     }
   } catch (error) {
-    console.error('Erreur lors de la récupération des routes', error);
+    console.error('❌ Erreur lors de la récupération des routes:', error);
+  } finally {
+    isLoading.value = false;
   }
 };
 
-// Ajouter un marqueur à la carte
+// Rafraîchir les données (forcer la synchronisation)
+const refreshData = async () => {
+  console.log('🔄 Rafraîchissement des données...');
+  await fetchRoads(true);
+};
+
+// Vérifier si une route a été signalée
+const isRoadReported = (roadId: number): boolean => {
+  return reports.value.some(report => report.road_id === roadId);
+};
+
+// Obtenir les détails d'une route
+const getRoadDetails = (roadId: number): RoadWithDetails | undefined => {
+  return roadsWithDetails.value.find(r => r.id === roadId);
+};
+
+// Formater le budget
+const formatBudget = (budget: number): string => {
+  if (budget >= 1000000) {
+    return `${(budget / 1000000).toFixed(1)}M Ar`;
+  } else if (budget >= 1000) {
+    return `${(budget / 1000).toFixed(0)}K Ar`;
+  }
+  return `${budget} Ar`;
+};
+
+// Formater le budget pour la barre de stats
+const formatBudgetShort = (budget: number | undefined): string => {
+  if (!budget) return '0';
+  if (budget >= 1000000000) {
+    return `${(budget / 1000000000).toFixed(1)}G`;
+  } else if (budget >= 1000000) {
+    return `${(budget / 1000000).toFixed(1)}M`;
+  } else if (budget >= 1000) {
+    return `${(budget / 1000).toFixed(0)}K`;
+  }
+  return `${budget}`;
+};
+
+// Formater la date
+const formatDate = (dateStr: string | undefined): string => {
+  if (!dateStr) return 'Non définie';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+// Déterminer la couleur du statut
+const getStatusColor = (status: string | null): string => {
+  if (!status) return '#9e9e9e';
+  const statusLower = status.toLowerCase();
+  if (statusLower.includes('terminé') || statusLower.includes('complet')) return '#4caf50';
+  if (statusLower.includes('cours') || statusLower.includes('progress')) return '#ff9800';
+  if (statusLower.includes('planifié') || statusLower.includes('prévu')) return '#2196f3';
+  return '#9e9e9e';
+};
+
+// Ajouter un marqueur à la carte avec infos complètes
 const addMarkerToMap = (road: Road) => {
   if (!map || !markerGroup) return;
+
+  // Récupérer les détails de la route
+  const details = getRoadDetails(road.id);
+  const isReported = isRoadReported(road.id);
   
-  // Créer le popup avec une meilleure mise en forme
+  // Déterminer la couleur selon le statut
+  let markerColor = '#1877f2'; // Bleu par défaut
+  if (isReported) {
+    markerColor = '#FF6B6B'; // Rouge si signalée
+  } else if (details?.roadwork?.status) {
+    markerColor = getStatusColor(details.roadwork.status);
+  }
+
+  // Construire le contenu du popup avec toutes les infos
+  const roadwork = details?.roadwork;
   const popupContent = `
-    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 13px; width: 260px;">
+    <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 13px; width: 300px; max-height: 400px; overflow-y: auto;">
       <div style="
-        background: linear-gradient(135deg, #1877f2 0%, #1255c0 100%);
+        background: linear-gradient(135deg, ${markerColor} 0%, ${markerColor}dd 100%);
         color: white;
-        padding: 10px 12px;
-        border-radius: 6px 6px 0 0;
-        margin: -12px -12px 10px -12px;
+        padding: 12px;
+        border-radius: 8px 8px 0 0;
+        margin: -12px -12px 12px -12px;
       ">
-        <h3 style="margin: 0; font-size: 15px; font-weight: 600;">📍 ${road.designation}</h3>
+        <h3 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600;">📍 ${road.designation}</h3>
+        ${roadwork?.status ? `<span style="
+          background: rgba(255,255,255,0.2);
+          padding: 2px 8px;
+          border-radius: 12px;
+          font-size: 11px;
+        ">${roadwork.status} ${roadwork.status_percentage ? `(${roadwork.status_percentage}%)` : ''}</span>` : ''}
       </div>
       
-      <div style="padding: 0 12px;">
-        <div style="margin-bottom: 8px;">
-          <strong style="color: #1877f2;">Latitude:</strong><br>
-          <span style="color: #555; font-family: monospace;">${road.latitude.toFixed(6)}</span>
+      <div style="padding: 0 4px;">
+        <!-- Coordonnées -->
+        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+          <div style="flex: 1; background: #f8f9fa; padding: 8px; border-radius: 6px;">
+            <div style="color: #666; font-size: 11px;">Latitude</div>
+            <div style="font-family: monospace; color: #333;">${road.latitude.toFixed(6)}</div>
+          </div>
+          <div style="flex: 1; background: #f8f9fa; padding: 8px; border-radius: 6px;">
+            <div style="color: #666; font-size: 11px;">Longitude</div>
+            <div style="font-family: monospace; color: #333;">${road.longitude.toFixed(6)}</div>
+          </div>
         </div>
         
-        <div style="margin-bottom: 8px;">
-          <strong style="color: #1877f2;">Longitude:</strong><br>
-          <span style="color: #555; font-family: monospace;">${road.longitude.toFixed(6)}</span>
+        <!-- Surface -->
+        <div style="
+          background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+          border-left: 4px solid #4caf50;
+          padding: 10px;
+          border-radius: 6px;
+          margin-bottom: 10px;
+        ">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 18px;">📐</span>
+            <div>
+              <div style="color: #2e7d32; font-weight: 600;">Surface</div>
+              <div style="color: #1b5e20; font-size: 16px;">${road.area} km²</div>
+            </div>
+          </div>
         </div>
         
+        ${roadwork ? `
+        <!-- Budget -->
+        <div style="
+          background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+          border-left: 4px solid #ff9800;
+          padding: 10px;
+          border-radius: 6px;
+          margin-bottom: 10px;
+        ">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 18px;">💰</span>
+            <div>
+              <div style="color: #e65100; font-weight: 600;">Budget</div>
+              <div style="color: #bf360c; font-size: 16px;">${formatBudget(roadwork.budget)}</div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Entreprise -->
+        ${roadwork.enterprise ? `
+        <div style="
+          background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+          border-left: 4px solid #2196f3;
+          padding: 10px;
+          border-radius: 6px;
+          margin-bottom: 10px;
+        ">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 18px;">🏢</span>
+            <div>
+              <div style="color: #1565c0; font-weight: 600;">Entreprise</div>
+              <div style="color: #0d47a1; font-size: 14px;">${roadwork.enterprise}</div>
+            </div>
+          </div>
+        </div>
+        ` : ''}
+        
+        <!-- Date de fin -->
+        <div style="
+          background: linear-gradient(135deg, #fce4ec 0%, #f8bbd9 100%);
+          border-left: 4px solid #e91e63;
+          padding: 10px;
+          border-radius: 6px;
+          margin-bottom: 10px;
+        ">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 18px;">📅</span>
+            <div>
+              <div style="color: #c2185b; font-weight: 600;">Date de fin prévue</div>
+              <div style="color: #880e4f; font-size: 14px;">${formatDate(roadwork.finished_at)}</div>
+            </div>
+          </div>
+        </div>
+        ` : `
         <div style="
           background: #f5f5f5;
-          border-left: 4px solid #28a745;
-          padding: 8px;
-          border-radius: 4px;
-          margin-bottom: 8px;
+          border: 1px dashed #bdbdbd;
+          padding: 12px;
+          border-radius: 6px;
+          text-align: center;
+          color: #757575;
+          margin-bottom: 10px;
         ">
-          <strong style="color: #28a745;">Zone:</strong><br>
-          <span style="color: #555; font-size: 14px;">${road.area} km²</span>
+          <span style="font-size: 24px;">🚧</span>
+          <div style="margin-top: 4px;">Aucun travaux planifiés</div>
+        </div>
+        `}
+        
+        <!-- Signalements -->
+        <div style="
+          background: ${isReported ? '#ffebee' : '#f5f5f5'};
+          border-left: 4px solid ${isReported ? '#f44336' : '#9e9e9e'};
+          padding: 10px;
+          border-radius: 6px;
+          margin-bottom: 10px;
+        ">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 18px;">${isReported ? '⚠️' : '✅'}</span>
+            <div>
+              <div style="color: ${isReported ? '#c62828' : '#616161'}; font-weight: 600;">Signalements</div>
+              <div style="color: ${isReported ? '#b71c1c' : '#424242'}; font-size: 14px;">
+                ${details?.reports_count || 0} signalement(s)
+              </div>
+            </div>
+          </div>
         </div>
         
+        <!-- Dates -->
         <div style="
-          background: #fff3cd;
-          border-left: 4px solid #ffc107;
-          padding: 8px;
-          border-radius: 4px;
-          font-size: 12px;
-          color: #856404;
+          font-size: 11px;
+          color: #9e9e9e;
+          text-align: center;
+          padding-top: 8px;
+          border-top: 1px solid #eee;
         ">
-          ℹ️ Cliquez sur l'icône pour plus de détails
+          Créé: ${formatDate(details?.created_at)} | Modifié: ${formatDate(details?.updated_at)}
         </div>
       </div>
     </div>
@@ -319,12 +702,12 @@ const addMarkerToMap = (road: Road) => {
   
   // Créer le marqueur avec l'icône personnalisée
   const marker = L.marker([road.latitude, road.longitude], {
-    icon: createCustomIcon('#1877f2'),
+    icon: createCustomIcon(markerColor),
   })
     .bindPopup(popupContent, {
-      maxWidth: 300,
+      maxWidth: 350,
       className: 'custom-popup',
-      minWidth: 260,
+      minWidth: 300,
     });
   
   marker.on('click', () => {
@@ -382,6 +765,136 @@ const togglePanel = () => {
   panelCollapsed.value = !panelCollapsed.value;
 };
 
+// Ouvrir le modal de signalement
+const router = useRouter();
+const openReportModal = async () => {
+  // Récupérer la position actuelle
+  try {
+    const coordinates = await Geolocation.getCurrentPosition({
+      enableHighAccuracy: true,
+      timeout: 10000,
+    });
+    currentLocation.value = {
+      lat: coordinates.coords.latitude,
+      lng: coordinates.coords.longitude
+    };
+  } catch (error) {
+    console.warn('Position non disponible:', error);
+    currentLocation.value = null;
+  }
+  
+  // Vérifier le mode en ligne/hors ligne
+  isOfflineMode.value = !isOnline();
+  
+  // Reset du formulaire
+  reportForm.value = { roadId: null, targetType: 'road', reason: '' };
+  reportError.value = '';
+  reportSuccess.value = '';
+  
+  showReportModal.value = true;
+};
+
+// Soumettre un signalement rapide
+const submitQuickReport = async () => {
+  if (!reportForm.value.reason.trim()) {
+    reportError.value = 'Veuillez décrire le problème';
+    return;
+  }
+  
+  if (!userData.value) {
+    reportError.value = 'Vous devez être connecté pour signaler';
+    return;
+  }
+  
+  reportLoading.value = true;
+  reportError.value = '';
+  
+  const today = new Date();
+  const reportDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  
+  try {
+    const result = await createReportWithOfflineSupport(
+      {
+        target_type: reportForm.value.targetType,
+        report_date: reportDate,
+        reason: reportForm.value.reason.trim(),
+        road_id: reportForm.value.roadId,
+        latitude: currentLocation.value?.lat,
+        longitude: currentLocation.value?.lng,
+      },
+      userData.value.id
+    );
+    
+    if (result.success) {
+      if (result.offline) {
+        reportSuccess.value = '📴 Signalement sauvegardé localement. Il sera envoyé automatiquement quand la connexion sera rétablie.';
+      } else {
+        reportSuccess.value = '✅ Signalement envoyé avec succès!';
+        // Recharger les signalements
+        await fetchRoads();
+      }
+      
+      // Fermer le modal après 2 secondes
+      setTimeout(() => {
+        showReportModal.value = false;
+        reportSuccess.value = '';
+      }, 2500);
+    } else {
+      reportError.value = result.error || 'Erreur lors de l\'envoi';
+    }
+  } catch (error: any) {
+    reportError.value = error.message || 'Erreur lors de l\'envoi';
+  } finally {
+    reportLoading.value = false;
+  }
+};
+
+// Appliquer le filtre des signalements
+const applyReportFilter = async () => {
+  console.log('🎛️ Filtre carte:', reportFilter.value);
+  
+  if (reportFilter.value === 'mine' && userData.value) {
+    // Charger mes signalements
+    try {
+      const response = await api.get('/reports/my');
+      myReports.value = response.data;
+      reports.value = myReports.value;
+      console.log('👤 Mes signalements chargés:', myReports.value.length);
+    } catch (error) {
+      console.error('Erreur chargement mes signalements:', error);
+    }
+  } else {
+    // Charger tous les signalements
+    try {
+      const response = await api.get('/reports');
+      reports.value = response.data;
+      console.log('🌍 Tous les signalements chargés:', reports.value.length);
+    } catch (error) {
+      console.error('Erreur chargement signalements:', error);
+    }
+  }
+  
+  // Rafraîchir les marqueurs
+  refreshMarkers();
+};
+
+// Rafraîchir les marqueurs sur la carte
+const refreshMarkers = () => {
+  if (!map || !markerGroup) return;
+  
+  // Supprimer tous les marqueurs existants
+  markerGroup.clearLayers();
+  
+  // Recréer les marqueurs
+  roads.value.forEach(road => {
+    addMarkerToMap(road);
+  });
+};
+
+const openReportForm = () => {
+  router.push('/report');
+};
+
 // Initialiser la carte
 const initMap = () => {
   if (!mapContainer.value || map) return;
@@ -407,11 +920,55 @@ const initMap = () => {
 
 onMounted(() => {
   console.log('Map.vue montée');
+  
+  // Initialiser la gestion de connectivité
+  initConnectivityManager(
+    () => {
+      // Quand on revient en ligne
+      isConnected.value = true;
+      console.log('🌐 Connexion rétablie - Synchronisation...');
+      refreshData();
+    },
+    () => {
+      // Quand on perd la connexion
+      isConnected.value = false;
+      console.log('📴 Mode hors ligne activé');
+    }
+  );
+  
+  // Souscrire aux mises à jour en temps réel Firebase
+  subscribeToRoads((firebaseRoads) => {
+    if (firebaseRoads.length > 0 && !isLoading.value) {
+      console.log('🔄 Mise à jour en temps réel depuis Firebase');
+      // Mettre à jour seulement si on a des données plus récentes
+      roadsWithDetails.value = firebaseRoads.map(r => ({
+        ...r,
+        latitude: typeof r.latitude === 'string' ? parseFloat(r.latitude as any) : r.latitude,
+        longitude: typeof r.longitude === 'string' ? parseFloat(r.longitude as any) : r.longitude,
+        area: typeof r.area === 'string' ? parseFloat(r.area as any) : r.area,
+      }));
+      roads.value = roadsWithDetails.value;
+    }
+  });
+  
+  subscribeToReports((firebaseReports) => {
+    if (firebaseReports.length > 0) {
+      console.log('🔄 Signalements mis à jour depuis Firebase');
+      reports.value = firebaseReports;
+    }
+  });
+  
   // Attendre que le DOM soit prêt
   setTimeout(() => {
     initMap();
     fetchRoads();
   }, 100);
+});
+
+// Nettoyer les écouteurs Firebase quand le composant est détruit
+onUnmounted(() => {
+  console.log('Map.vue démontée - Nettoyage des écouteurs Firebase');
+  unsubscribeAll();
 });
 </script>
 
@@ -449,15 +1006,173 @@ onMounted(() => {
   z-index: 1;
 }
 
+/* Indicateur de chargement */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.loading-overlay p {
+  margin-top: 16px;
+  color: #1877f2;
+  font-weight: 500;
+}
+
+/* Chip de connexion */
+.connection-chip {
+  --padding-start: 8px;
+  --padding-end: 8px;
+  font-size: 11px;
+  height: 28px;
+}
+
+.connection-chip ion-icon {
+  font-size: 14px;
+  margin-right: 4px;
+}
+
+/* Animation de rotation pour le refresh */
+.rotating {
+  animation: rotate 1s linear infinite;
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Barre de statistiques */
+.stats-bar {
+  position: fixed;
+  top: 120px;
+  left: 10px;
+  right: 10px;
+  z-index: 998;
+  background: linear-gradient(135deg, #1877f2 0%, #0d5bba 100%);
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(24, 119, 242, 0.3);
+  padding: 12px;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+}
+
+.stat-item {
+  text-align: center;
+  color: white;
+}
+
+.stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.stat-label {
+  display: block;
+  font-size: 10px;
+  opacity: 0.85;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 /* Contrôles de zoom */
 .zoom-controls {
   position: fixed;
-  bottom: 240px;
+  bottom: 280px;
   right: 15px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   z-index: 999;
+}
+
+/* Contrôles de filtre */
+.filter-controls {
+  position: fixed;
+  top: 70px;
+  left: 10px;
+  right: 10px;
+  z-index: 999;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
+  padding: 5px;
+}
+
+.filter-controls ion-segment {
+  --background: #f5f5f5;
+}
+
+.filter-controls ion-segment-button {
+  --indicator-color: #1877f2;
+  --color-checked: white;
+  font-size: 12px;
+}
+
+/* Bouton localisation */
+.locate-btn {
+  --background: #4CAF50 !important;
+  --color: white !important;
+}
+
+/* Modal de signalement */
+.location-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #e3f2fd;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  font-size: 13px;
+  color: #1565c0;
+}
+
+.location-info ion-icon {
+  font-size: 20px;
+  color: #1877f2;
+}
+
+.error-message {
+  margin-top: 15px;
+  padding: 10px;
+  background: #fee;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.success-message {
+  margin-top: 15px;
+  padding: 10px;
+  background: #efe;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.offline-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 15px;
+  padding: 12px;
+  background: #fff3e0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #e65100;
+}
+
+.offline-notice ion-icon {
+  font-size: 20px;
 }
 
 .zoom-btn {
@@ -583,6 +1298,21 @@ onMounted(() => {
   color: #1877f2;
   font-size: 20px;
   margin-right: 8px;
+}
+
+.road-icon.reported {
+  color: #FF6B6B;
+}
+
+.road-icon.normal {
+  color: #1877f2;
+}
+
+.report-status {
+  color: #FF6B6B !important;
+  font-weight: bold;
+  font-size: 11px !important;
+  margin-top: 4px !important;
 }
 
 .road-info-item h4 {

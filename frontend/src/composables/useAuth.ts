@@ -27,10 +27,16 @@ export function useAuth() {
   // Se déconnecter
   const signOut = async () => {
     try {
+      // Supprimer le token Laravel du localStorage
+      localStorage.removeItem('token')
+      console.log('✅ Token Laravel supprimé')
+      
       await firebaseSignOut(auth)
-      console.log('✅ Déconnexion réussie')
+      console.log('✅ Déconnexion Firebase réussie')
     } catch (error) {
       console.error('❌ Erreur lors de la déconnexion:', error)
+      // Même en cas d'erreur, supprimer le token
+      localStorage.removeItem('token')
       throw error
     }
   }

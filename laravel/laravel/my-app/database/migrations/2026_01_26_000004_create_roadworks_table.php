@@ -1,4 +1,4 @@
-n<?php
+<?php
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
@@ -9,8 +9,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('roadworks', function (Blueprint $table) {
-            $table->decimal('id', 10, 2)->primary();
-            $table->decimal('budget', 10, 2);
+            $table->id();
+            $table->decimal('budget', 15, 2); // Jusqu'à 9 999 999 999 999,99
             $table->timestamp('finished_at');
             $table->integer('status_id');
             $table->integer('road_id');

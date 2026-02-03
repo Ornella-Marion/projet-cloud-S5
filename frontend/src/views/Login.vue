@@ -55,15 +55,34 @@ const login = async () => {
     loading.value = false;
     return;
   }
+  
+  // Supprimer l'ancien token avant la nouvelle connexion
+  localStorage.removeItem('token');
+  console.log('🗑️ Ancien token supprimé du localStorage');
+  
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email.value, password.value);
+    console.log('🔐 Firebase login réussi pour:', email.value);
+    console.log('🔐 Firebase UID:', userCredential.user.uid);
+    
     // Synchroniser avec le backend Laravel pour obtenir le token
     try {
       const res = await (await import('../services/api')).default.post('/auth/login', {
         email: email.value,
         password: password.value
       });
+      
+      // Vérifier que le token correspond bien à l'utilisateur connecté
+      console.log('✅ Token Laravel reçu pour user:', res.data.user?.name, 'ID:', res.data.user?.id, 'Email:', res.data.user?.email);
+      
+      if (res.data.user?.email !== email.value) {
+        console.error('❌ ERREUR: Email du token ne correspond pas!');
+        console.error('Email attendu:', email.value);
+        console.error('Email reçu:', res.data.user?.email);
+      }
+      
       localStorage.setItem('token', res.data.token);
+      console.log('💾 Token stocké dans localStorage');
     } catch (e) {
       errors.value.push('Connexion Laravel échouée.');
       loading.value = false;

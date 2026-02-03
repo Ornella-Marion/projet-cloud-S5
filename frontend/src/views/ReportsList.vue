@@ -10,7 +10,19 @@
     </ion-header>
     <ion-content class="reports-content">
       <div class="reports-section">
-        <h3>Tous les signalements enregistrés</h3>
+        <!-- Filtre -->
+        <div class="filter-container">
+          <ion-segment v-model="filterMode" @ionChange="applyFilter">
+            <ion-segment-button value="all">
+              <ion-label>Tous</ion-label>
+            </ion-segment-button>
+            <ion-segment-button value="mine">
+              <ion-label>Mes signalements</ion-label>
+            </ion-segment-button>
+          </ion-segment>
+        </div>
+        
+        <h3>{{ filterMode === 'all' ? 'Tous les signalements enregistrés' : 'Mes signalements' }}</h3>
         
         <!-- Loader -->
         <div v-if="loading" class="loading-spinner">
@@ -19,14 +31,14 @@
         </div>
 
         <!-- Liste des signalements -->
-        <ion-list v-if="!loading && reports.length > 0" class="reports-list">
+        <ion-list v-if="!loading && filteredReports.length > 0" class="reports-list">
           <ion-item-divider color="light">
             <ion-label>
-              <h2>{{ reports.length }} signalement(s) trouvé(s)</h2>
+              <h2>{{ filteredReports.length }} signalement(s) trouvé(s)</h2>
             </ion-label>
           </ion-item-divider>
           
-          <ion-item v-for="report in reports" :key="report.id" class="report-item">
+          <ion-item v-for="report in filteredReports" :key="report.id" class="report-item">
             <ion-label>
               <h4>{{ report.target_type }}</h4>
               <p><strong>Utilisateur :</strong> {{ report.user?.name || 'Inconnu' }}</p>
@@ -41,9 +53,9 @@
         </ion-list>
 
         <!-- Message si aucun signalement -->
-        <div v-if="!loading && reports.length === 0" class="no-data">
+        <div v-if="!loading && filteredReports.length === 0" class="no-data">
           <ion-icon name="alert-circle-outline"></ion-icon>
-          <p>Aucun signalement enregistré pour le moment.</p>
+          <p>{{ filterMode === 'mine' ? 'Vous n\'avez pas encore créé de signalement.' : 'Aucun signalement enregistré pour le moment.' }}</p>
         </div>
 
         <!-- Message d'erreur -->
@@ -60,8 +72,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem, IonLabel, IonButton, IonButtons, IonSpinner, IonItemDivider, IonText, IonIcon } from '@ionic/vue';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem, IonLabel, IonButton, IonButtons, IonSpinner, IonItemDivider, IonText, IonIcon, IonSegment, IonSegmentButton } from '@ionic/vue';
 import api from '../services/api';
+import { useUserRole } from '../composables/useUserRole';
 
 interface User {
   id: number;
@@ -90,23 +103,88 @@ interface Report {
 }
 
 const router = useRouter();
+const { canViewReports, isAuthenticated } = useUserRole();
 const reports = ref<Report[]>([]);
+const allReports = ref<Report[]>([]);
+const myReports = ref<Report[]>([]);
+const filteredReports = ref<Report[]>([]);
 const loading = ref(true);
 const errorMessage = ref('');
+const filterMode = ref<'all' | 'mine'>('all');
+const currentUserId = ref<number | null>(null);
+
+// Permission guard
+onMounted(async () => {
+  console.log('🚀 Initialisation de ReportsList...');
+  // Wait for user role to be loaded
+  if (!isAuthenticated.value || !canViewReports.value) {
+    console.warn('❌ Utilisateur non autorisé ou non authentifié');
+    router.push('/dashboard');
+    return;
+  }
+  // Récupérer l'ID de l'utilisateur courant
+  try {
+    console.log('🔍 Récupération des informations utilisateur...');
+    const response = await api.get('/auth/me');
+    currentUserId.value = response.data.id;
+    console.log('✅ Utilisateur connecté:', response.data.name, '(ID:', currentUserId.value, ')');
+  } catch (error) {
+    console.error('❌ Erreur lors de la récupération de l\'utilisateur courant', error);
+  }
+  // Charger les signalements selon le mode par défaut
+  console.log('📊 Chargement initial des données...');
+  applyFilter();
+});
 
 // Récupérer tous les signalements
 const fetchReports = async () => {
   loading.value = true;
   errorMessage.value = '';
   try {
+    console.log('🔄 Chargement de TOUS les signalements...');
     const response = await api.get('/reports');
-    reports.value = response.data;
-    console.log('Signalements chargés :', reports.value);
+    allReports.value = response.data;
+    filteredReports.value = allReports.value;
+    console.log('✅ Tous les signalements chargés :', allReports.value.length, 'signalements');
+    console.log('📋 Détails :', allReports.value.map(r => ({ id: r.id, user: r.user?.name, user_id: r.user_id })));
   } catch (error: any) {
-    console.error('Erreur lors de la récupération des signalements', error);
+    console.error('❌ Erreur lors de la récupération des signalements', error);
     errorMessage.value = 'Impossible de charger les signalements. Veuillez réessayer.';
   } finally {
     loading.value = false;
+  }
+};
+
+// Récupérer uniquement les signalements de l'utilisateur connecté
+const fetchMyReports = async () => {
+  loading.value = true;
+  errorMessage.value = '';
+  try {
+    console.log('🔄 Chargement de MES signalements pour user_id:', currentUserId.value);
+    const response = await api.get('/reports/my');
+    myReports.value = response.data;
+    filteredReports.value = myReports.value;
+    console.log('✅ Mes signalements chargés :', myReports.value.length, 'signalements');
+    console.log('👤 Utilisateur connecté ID:', currentUserId.value);
+    console.log('📋 Mes signalements :', myReports.value.map(r => ({ id: r.id, user: r.user?.name, user_id: r.user_id })));
+  } catch (error: any) {
+    console.error('❌ Erreur lors de la récupération de mes signalements', error);
+    console.error('🔍 Détails erreur:', error.response?.data || error.message);
+    errorMessage.value = 'Impossible de charger vos signalements. Veuillez réessayer.';
+  } finally {
+    loading.value = false;
+  }
+};
+
+// Appliquer le filtre
+const applyFilter = () => {
+  console.log('🎛️ Changement de filtre - Mode sélectionné:', filterMode.value);
+  if (filterMode.value === 'mine') {
+    console.log('👤 Mode "Mes signalements" - Chargement des signalements personnels...');
+    fetchMyReports();
+  } else {
+    console.log('🌍 Mode "Tous" - Chargement de tous les signalements...');
+    fetchReports();
   }
 };
 
@@ -128,10 +206,6 @@ const formatDateTime = (dateTimeString: string): string => {
 const goBack = () => {
   router.back();
 };
-
-onMounted(() => {
-  fetchReports();
-});
 </script>
 
 <style scoped>
@@ -149,6 +223,13 @@ onMounted(() => {
 
 .reports-section {
   margin-bottom: 30px;
+}
+
+.filter-container {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f0f0f0;
+  border-radius: 8px;
 }
 
 .reports-section h3 {

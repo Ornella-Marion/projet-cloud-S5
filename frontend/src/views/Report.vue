@@ -8,14 +8,6 @@
   <ion-content class="ion-padding">
     <form @submit.prevent="submitReport">
       <ion-item>
-        <ion-label position="floating">Utilisateur</ion-label>
-        <ion-select v-model="userId" :disabled="loading">
-          <ion-select-option v-for="user in users" :key="user.id" :value="user.id">
-            {{ user.name }}
-          </ion-select-option>
-        </ion-select>
-      </ion-item>
-      <ion-item>
         <ion-label position="floating">Route (optionnel)</ion-label>
         <ion-select v-model="roadId" :disabled="loading">
           <ion-select-option :value="null">-- Aucune route --</ion-select-option>
@@ -55,14 +47,24 @@
 
 <script setup lang="ts">
 
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonItem, IonLabel, IonInput, IonTextarea, IonButton, IonSelect, IonSelectOption, IonText, IonDatetime } from '@ionic/vue';
 import { createReport } from '../services/report';
 import { addReportToFirestore } from '../services/firestoreReport';
 import api from '../services/api';
 import { useRouter } from 'vue-router';
+import { useUserRole } from '../composables/useUserRole';
 
 const router = useRouter();
+const { canCreateReport, isAuthenticated, userData, fetchUserRole } = useUserRole();
+
+// Redirection si non autorisé
+onMounted(() => {
+  if (!isAuthenticated.value || !canCreateReport.value) {
+    console.warn('⚠️ Accès refusé: signalement réservé aux utilisateurs');
+    router.push('/dashboard');
+  }
+});
 
 interface Road {
   id: number;
@@ -72,13 +74,6 @@ interface Road {
   area: number;
 }
 
-interface User {
-  id: number;
-  name: string;
-  email: string;
-}
-
-const users = ref<User[]>([]);
 const roads = ref<Road[]>([]);
 const userId = ref<number|null>(null);
 const roadId = ref<number|null>(null);
@@ -96,27 +91,53 @@ const loading = ref(false);
 const successMessage = ref('');
 const errorMessage = ref('');
 
+// Observer userData pour définir userId automatiquement
+watch(userData, (newUserData) => {
+  if (newUserData && !userId.value) {
+    userId.value = newUserData.id;
+    console.log('👤 Utilisateur automatiquement sélectionné (watch):', newUserData.name, 'ID:', newUserData.id);
+  }
+}, { immediate: true });
+
 onMounted(async () => {
+  // Forcer le rechargement des données utilisateur
+  await fetchUserRole();
+  
+  // Définir automatiquement l'utilisateur connecté
+  if (userData.value) {
+    userId.value = userData.value.id;
+    console.log('👤 Utilisateur automatiquement sélectionné (mounted):', userData.value.name, 'ID:', userData.value.id);
+  }
+
   try {
-    const userRes = await api.get('/users');
-    users.value = userRes.data;
-    
     const roadRes = await api.get('/roads');
     roads.value = roadRes.data;
   } catch {
-    users.value = [];
     roads.value = [];
   }
 });
 
 const submitReport = async () => {
-    // DEBUG : afficher le token utilisé
+    // DEBUG : afficher le token utilisé et l'utilisateur
     const debugToken = localStorage.getItem('token');
-    console.log('Token utilisé pour l’API :', debugToken);
+    console.log('Token utilisé pour l\'API :', debugToken);
+    console.log('User ID pour le signalement :', userId.value);
+    console.log('userData actuel :', userData.value);
   successMessage.value = '';
   errorMessage.value = '';
+  
+  // Vérifier que l'utilisateur est bien défini
+  if (!userId.value) {
+    // Essayer de recharger les données utilisateur
+    await fetchUserRole();
+    if (userData.value) {
+      userId.value = userData.value.id;
+    }
+  }
+  
   if (!userId.value || !targetType.value || !reportDate.value || !reason.value.trim()) {
     errorMessage.value = 'Tous les champs sont obligatoires.';
+    console.error('Champs manquants - userId:', userId.value, 'targetType:', targetType.value, 'reportDate:', reportDate.value, 'reason:', reason.value);
     return;
   }
   // S'assurer que la date est bien au format yyyy-MM-dd
@@ -157,7 +178,6 @@ const submitReport = async () => {
     console.log('Message de succès affiché, redirection dans 2 secondes...');
     reportDate.value = defaultDate;
     reason.value = '';
-    userId.value = null;
     roadId.value = null;
     
     // Rediriger vers le dashboard après succès

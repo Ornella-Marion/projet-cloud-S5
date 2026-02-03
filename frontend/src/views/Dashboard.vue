@@ -13,15 +13,16 @@
         <h2>Bonjour, {{ userEmail || 'Utilisateur' }} !</h2>
         <p>Bienvenue sur votre tableau de bord.</p>
         <p class="user-info">Connecté en tant que : {{ userEmail }}</p>
+        <p v-if="userRole" class="role-badge" :class="`role-${userRole}`">👤 Rôle: {{ userRole }}</p>
       </div>
 
       <div class="actions-section">
         <h3>Actions</h3>
-        <ion-button expand="full" router-link="/report" class="action-btn">
+        <ion-button v-if="canCreateReport" expand="full" router-link="/report" class="action-btn">
           <ion-icon slot="start" name="alert-circle"></ion-icon>
           Signaler un problème
         </ion-button>
-        <ion-button expand="full" router-link="/reports-list" class="action-btn secondary">
+        <ion-button v-if="canViewReports" expand="full" router-link="/reports-list" class="action-btn secondary">
           <ion-icon slot="start" name="list"></ion-icon>
           Voir les signalements
         </ion-button>
@@ -30,6 +31,9 @@
           Voir la carte
         </ion-button>
       </div>
+
+      <!-- Panneau Manager -->
+      <manager-panel />
 
       <div class="roads-section">
         <h3>Routes Disponibles</h3>
@@ -53,6 +57,10 @@ import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem,
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import api from '../services/api';
+import { useUserRole } from '../composables/useUserRole';
+import ManagerPanel from '../components/ManagerPanel.vue';
+
+const { userRole, canCreateReport, canViewReports } = useUserRole();
 
 interface Road {
   id: number;
@@ -75,10 +83,28 @@ const fetchRoads = async () => {
 
 const logout = async () => {
   try {
+    // Appeler l'API de déconnexion Laravel pour invalider le token
+    try {
+      await api.post('/auth/logout');
+      console.log('✅ Token Laravel invalidé');
+    } catch (e) {
+      console.warn('⚠️ Erreur lors de la déconnexion Laravel:', e);
+    }
+    
+    // Supprimer le token du localStorage
+    localStorage.removeItem('token');
+    console.log('✅ Token supprimé du localStorage');
+    
+    // Déconnexion Firebase
     await signOut(auth);
+    console.log('✅ Déconnexion Firebase réussie');
+    
     window.location.href = '/login';
   } catch (error) {
     console.error('Erreur de déconnexion', error);
+    // Même en cas d'erreur, supprimer le token local et rediriger
+    localStorage.removeItem('token');
+    window.location.href = '/login';
   }
 };
 
@@ -174,6 +200,32 @@ onMounted(() => {
   font-size: 14px;
   color: #666;
   margin-top: 5px;
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.role-manager {
+  background: linear-gradient(135deg, #FF6B6B 0%, #FF5252 100%);
+  color: white;
+}
+
+.role-user {
+  background: linear-gradient(135deg, #4CAF50 0%, #45A049 100%);
+  color: white;
+}
+
+.role-visitor {
+  background: linear-gradient(135deg, #FFC107 0%, #FFB300 100%);
+  color: white;
 }
 
 .no-data {
