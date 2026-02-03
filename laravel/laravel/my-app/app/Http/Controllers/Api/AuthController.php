@@ -3,14 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
-use App\Models\LoginAttempt;
+use App\Http\Traits\LoginAttemptTrait;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
-    private const MAX_LOGIN_ATTEMPTS = 3;
+    use LoginAttemptTrait;
+
     private const SESSION_DURATION = 86400; // 24 heures
 
     /**
@@ -89,38 +90,28 @@ class AuthController extends Controller
         // Vérifier les identifiants
         if (!$user || !Hash::check($validated['password'], $user->password)) {
             // Enregistrer la tentative échouée
-            try {
-                LoginAttempt::create([
-                    'email' => $validated['email'],
-                    'ip_address' => $request->ip(),
-                    'success' => false,
-                ]);
-            } catch (\Exception $e) {
-                \Log::error('LoginAttempt error: ' . $e->getMessage());
-            }
+            $this->recordFailedLoginAttempt($validated['email'], $request);
 
-            // Compter les tentatives échouées
-            $failedAttempts = LoginAttempt::countFailedAttempts($validated['email']);
-            if ($failedAttempts >= self::MAX_LOGIN_ATTEMPTS) {
+            // Vérifier si le maximum de tentatives est atteint
+            if ($this->hasExceededMaxAttempts($validated['email'])) {
                 if ($user) {
                     $user->lockAccount('Trop de tentatives de connexion');
                 }
+                return response()->json([
+                    'error' => 'Compte verrouillé après trop de tentatives',
+                    'remaining_attempts' => 0
+                ], 401);
             }
 
-            return response()->json(['error' => 'Identifiants invalides'], 401);
+            return response()->json([
+                'error' => 'Identifiants invalides',
+                'remaining_attempts' => $this->getRemainingAttempts($validated['email'])
+            ], 401);
         }
 
-        // Connexion réussie
-        try {
-            LoginAttempt::create([
-                'user_id' => $user->id,
-                'email' => $validated['email'],
-                'ip_address' => $request->ip(),
-                'success' => true,
-            ]);
-        } catch (\Exception $e) {
-            \Log::error('LoginAttempt success record error: ' . $e->getMessage());
-        }
+        // Connexion réussie - enregistrer et réinitialiser les tentatives
+        $this->recordSuccessfulLoginAttempt($user->id, $validated['email'], $request);
+        $this->clearFailedAttempts($validated['email']);
 
         // Générer un token Sanctum
         $token = $user->createToken('api-token')->plainTextToken;
@@ -210,5 +201,34 @@ class AuthController extends Controller
         $user->unlockAccount();
 
         return response()->json(['message' => 'Compte débloqué']);
+    }
+
+    /**
+     * @OA\Post(
+     *     path="/api/auth/refresh-token",
+     *     summary="Renouveler le token d'authentification",
+     *     tags={"Authentication"},
+     *     security={{"BearerAuth":{}}},
+     *     @OA\Response(status=200, description="Token renouvelé"),
+     *     @OA\Response(status=401, description="Non authentifié")
+     * )
+     */
+    public function refreshToken(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['error' => 'Non authentifié'], 401);
+        }
+
+        // Supprimer le token actuel
+        $request->user()->currentAccessToken()->delete();
+        // Générer un nouveau token
+        $newToken = $user->createToken('api-token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Token renouvelé',
+            'token' => $newToken,
+            'user' => $user
+        ]);
     }
 }

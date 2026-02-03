@@ -60,7 +60,7 @@ services:
     image: maptiler/tileserver-gl:latest
     container_name: laravel_tileserver
     ports:
-      - "8082:80"
+      - "8082:8080"
     volumes:
       - ./tiles:/data
     networks:

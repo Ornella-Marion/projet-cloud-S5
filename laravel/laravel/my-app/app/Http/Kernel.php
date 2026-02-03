@@ -45,4 +45,11 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'token.auth' => \App\Http\Middleware\TokenAuthenticate::class,
     ];
+
+    protected function schedule(Schedule $schedule)
+    {
+        $schedule->command('sanctum:prune-expired')->daily();
+    }
 }
+
+

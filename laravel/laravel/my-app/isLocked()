@@ -1,0 +1,1 @@
+"Is Locked: " . ($user- ? 'Yes' : 'No') . PHP_EOL;
