@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Laravel\Sanctum\HasApiTokens;
 use App\Models\Traits\AccountLockTrait;
 
-class User extends Model
+class User extends Authenticatable
 {
     use HasApiTokens, AccountLockTrait;
     protected $fillable = ['email', 'password', 'name', 'role', 'is_active'];

@@ -3,12 +3,13 @@
 namespace App\Providers;
 
 use App\Services\FirebaseService;
+use App\Services\DataSourceService;
 use Illuminate\Support\ServiceProvider;
 
 /**
  * Firebase Service Provider
  * 
- * Enregistre le service Firebase dans le conteneur de services de Laravel
+ * Enregistre les services Firebase et DataSource dans le conteneur de services de Laravel
  * Permet l'injection de dépendance automatique dans les contrôleurs et services
  * 
  * @package App\Providers
@@ -30,6 +31,15 @@ class FirebaseServiceProvider extends ServiceProvider
 
         // Alias pour faciliter l'accès
         $this->app->alias(FirebaseService::class, 'firebase');
+
+        // Enregistrer DataSourceService comme singleton
+        // Gère le switch automatique Firebase/PostgreSQL
+        $this->app->singleton(DataSourceService::class, function ($app) {
+            return new DataSourceService($app->make(FirebaseService::class));
+        });
+
+        // Alias pour faciliter l'accès
+        $this->app->alias(DataSourceService::class, 'datasource');
     }
 
     /**
@@ -48,9 +58,15 @@ class FirebaseServiceProvider extends ServiceProvider
         if (config('app.debug') && !app(FirebaseService::class)->isConfigured()) {
             \Illuminate\Support\Facades\Log::warning(
                 'Firebase is not properly configured. ' .
-                'Please set the required environment variables in .env'
+                    'Please set the required environment variables in .env'
             );
         }
+
+        // Log l'information sur le DataSource
+        \Illuminate\Support\Facades\Log::info(
+            'DataSourceService initialized',
+            ['active_datasource' => app(DataSourceService::class)->getActiveDataSource()]
+        );
     }
 
     /**
@@ -60,6 +76,6 @@ class FirebaseServiceProvider extends ServiceProvider
      */
     public function provides(): array
     {
-        return [FirebaseService::class, 'firebase'];
+        return [FirebaseService::class, DataSourceService::class, 'firebase', 'datasource'];
     }
 }

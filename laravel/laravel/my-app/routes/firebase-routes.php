@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\Route;
  */
 
 Route::middleware(['auth:sanctum'])->prefix('firebase')->group(function () {
-    
+
     /**
      * Vérifier la configuration Firebase
      * GET /api/firebase/check-configuration
@@ -37,11 +37,20 @@ Route::middleware(['auth:sanctum'])->prefix('firebase')->group(function () {
         ->name('firebase.check-configuration');
 
     /**
+     * Vérifier la connexion Internet et la connectivité Firebase
+     * GET /api/firebase/check-internet
+     * 
+     * Teste la connectivité Internet et l'accès aux services Firebase
+     */
+    Route::get('/check-internet', [FirebaseExampleController::class, 'checkInternetConnection'])
+        ->name('firebase.check-internet');
+
+    /**
      * ====================================================================
      * FIRESTORE ROUTES
      * ====================================================================
      */
-    
+
     /**
      * Écrire un document dans Firestore
      * POST /api/firebase/firestore/write
@@ -76,7 +85,7 @@ Route::middleware(['auth:sanctum'])->prefix('firebase')->group(function () {
      * REALTIME DATABASE ROUTES
      * ====================================================================
      */
-    
+
     /**
      * Écrire des données dans Realtime Database
      * POST /api/firebase/realtime-db/write
@@ -112,7 +121,7 @@ Route::middleware(['auth:sanctum'])->prefix('firebase')->group(function () {
      * CLOUD MESSAGING ROUTES (Push Notifications)
      * ====================================================================
      */
-    
+
     /**
      * Envoyer une notification push
      * POST /api/firebase/messaging/send
@@ -136,7 +145,7 @@ Route::middleware(['auth:sanctum'])->prefix('firebase')->group(function () {
      * CLOUD STORAGE ROUTES
      * ====================================================================
      */
-    
+
     /**
      * Uploader un fichier vers Cloud Storage
      * POST /api/firebase/storage/upload
@@ -148,6 +157,72 @@ Route::middleware(['auth:sanctum'])->prefix('firebase')->group(function () {
     Route::post('/storage/upload', [FirebaseExampleController::class, 'uploadToStorage'])
         ->name('firebase.storage.upload')
         ->middleware('throttle:5,1'); // Rate limiting: 5 per minute
+
+    /**
+     * ====================================================================
+     * DATA SYNC ROUTES
+     * ====================================================================
+     */
+
+    /**
+     * Synchroniser des données vers Firebase
+     * POST /api/firebase/sync
+     */
+    Route::post('/sync', [FirebaseExampleController::class, 'syncToFirebase'])
+        ->name('firebase.sync')
+        ->middleware('throttle:30,1'); // Rate limiting: 30 per minute
+
+    /**
+     * Synchroniser un modèle vers Firebase
+     * POST /api/firebase/sync-model
+     */
+    Route::post('/sync-model', [FirebaseExampleController::class, 'syncModel'])
+        ->name('firebase.sync-model')
+        ->middleware('throttle:30,1'); // Rate limiting: 30 per minute
+
+    /**
+     * Synchroniser plusieurs éléments (batch) vers Firebase
+     * POST /api/firebase/sync-batch
+     */
+    Route::post('/sync-batch', [FirebaseExampleController::class, 'syncBatch'])
+        ->name('firebase.sync-batch')
+        ->middleware('throttle:20,1'); // Rate limiting: 20 per minute
+
+    /**
+     * ====================================================================
+     * DATA RETRIEVAL ROUTES (Sync From Firebase)
+     * ====================================================================
+     */
+
+    /**
+     * Récupérer des données depuis Firebase
+     * POST /api/firebase/sync-from
+     * 
+     * Endpoint générique pour récupérer des données depuis Firestore ou Realtime Database
+     */
+    Route::post('/sync-from', [FirebaseExampleController::class, 'syncFromFirebase'])
+        ->name('firebase.sync-from')
+        ->middleware('throttle:30,1'); // Rate limiting: 30 per minute
+
+    /**
+     * Récupérer les données d'un modèle depuis Firebase
+     * POST /api/firebase/sync-model-from
+     * 
+     * Endpoint pratique pour récupérer les données d'un modèle spécifique
+     */
+    Route::post('/sync-model-from', [FirebaseExampleController::class, 'syncModelFromFirebase'])
+        ->name('firebase.sync-model-from')
+        ->middleware('throttle:30,1'); // Rate limiting: 30 per minute
+
+    /**
+     * Récupérer un lot de documents depuis Firebase
+     * POST /api/firebase/sync-batch-from
+     * 
+     * Endpoint pour récupérer plusieurs documents/références en une seule requête
+     */
+    Route::post('/sync-batch-from', [FirebaseExampleController::class, 'syncBatchFromFirebase'])
+        ->name('firebase.sync-batch-from')
+        ->middleware('throttle:20,1'); // Rate limiting: 20 per minute
 });
 
 /**
