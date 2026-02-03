@@ -357,11 +357,56 @@ const createUserIcon = () => {
 const getUserLocation = async () => {
   try {
     console.log('📍 Demande de localisation...');
-    const coordinates = await Geolocation.getCurrentPosition({
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0,
-    });
+    
+    // Vérifier si la géolocalisation est disponible
+    if (!navigator.geolocation) {
+      alert('La géolocalisation n\'est pas supportée par votre navigateur');
+      return;
+    }
+    
+    // D'abord vérifier les permissions
+    try {
+      const permission = await Geolocation.checkPermissions();
+      console.log('📍 Permission actuelle:', permission.location);
+      
+      if (permission.location === 'denied') {
+        alert('Vous avez refusé l\'accès à votre position. Veuillez l\'autoriser dans les paramètres de votre navigateur.');
+        return;
+      }
+      
+      if (permission.location === 'prompt') {
+        const requested = await Geolocation.requestPermissions();
+        console.log('📍 Permission demandée:', requested.location);
+        if (requested.location === 'denied') {
+          alert('Permission de localisation refusée');
+          return;
+        }
+      }
+    } catch (permError) {
+      console.warn('⚠️ Vérification permission non disponible:', permError);
+      // Continuer quand même sur navigateur web
+    }
+    
+    // Essayer avec l'API Capacitor
+    let coordinates;
+    try {
+      coordinates = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      });
+    } catch (capacitorError: any) {
+      console.warn('⚠️ Capacitor Geolocation échoué, essai avec API Web:', capacitorError);
+      
+      // Fallback sur l'API Web standard
+      coordinates = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0,
+        });
+      });
+    }
     
     const { latitude, longitude, accuracy } = coordinates.coords;
     console.log(`✓ Position obtenue: ${latitude}, ${longitude}, Precision: ${accuracy}m`);
@@ -407,7 +452,20 @@ const getUserLocation = async () => {
     map.setView([latitude, longitude], 17);
   } catch (error: any) {
     console.error('❌ Erreur de géolocalisation:', error);
-    alert(`Impossible de vous localiser: ${error.message}`);
+    
+    // Message d'erreur plus explicite
+    let errorMsg = 'Impossible de vous localiser.';
+    if (error.code === 1 || error.message?.includes('denied')) {
+      errorMsg = 'Permission de localisation refusée. Autorisez l\'accès à votre position dans les paramètres du navigateur.';
+    } else if (error.code === 2 || error.message?.includes('unavailable')) {
+      errorMsg = 'Position non disponible. Vérifiez que le GPS est activé.';
+    } else if (error.code === 3 || error.message?.includes('timeout')) {
+      errorMsg = 'Délai d\'attente dépassé. Réessayez dans un endroit avec meilleure réception GPS.';
+    } else if (error.message) {
+      errorMsg = `Erreur: ${error.message}`;
+    }
+    
+    alert(errorMsg);
   }
 };
 
