@@ -34,6 +34,11 @@ import '@ionic/vue/css/palettes/dark.system.css';
 /* Theme variables */
 import './theme/variables.css';
 
+/* Initialiser la base de données locale (migration) */
+import { initializeLocalDatabase } from './services/localDatabase';
+initializeLocalDatabase();
+console.log('📦 Base de données locale initialisée');
+
 const app = createApp(App)
   .use(IonicVue)
   .use(router);

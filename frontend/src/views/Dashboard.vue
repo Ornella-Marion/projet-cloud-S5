@@ -4,11 +4,22 @@
       <ion-toolbar class="dashboard-toolbar">
         <ion-title>Dashboard</ion-title>
         <ion-buttons slot="end">
+          <!-- Indicateur de connexion -->
+          <ion-chip :color="isOnline ? 'success' : 'warning'" class="connection-chip">
+            <ion-icon :name="isOnline ? 'cloud-done' : 'cloud-offline'"></ion-icon>
+            <ion-label>{{ isOnline ? 'En ligne' : 'Hors ligne' }}</ion-label>
+          </ion-chip>
           <ion-button class="logout-btn" @click="logout">Déconnexion</ion-button>
         </ion-buttons>
       </ion-toolbar>
     </ion-header>
     <ion-content class="dashboard-content">
+      <!-- Bannière mode hors ligne -->
+      <div v-if="!isOnline" class="offline-banner">
+        <ion-icon name="cloud-offline"></ion-icon>
+        <span>Mode hors ligne - Données locales utilisées</span>
+      </div>
+      
       <div class="welcome-section">
         <h2>Bonjour, {{ userEmail || 'Utilisateur' }} !</h2>
         <p>Bienvenue sur votre tableau de bord.</p>
@@ -52,13 +63,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem, IonLabel, IonButton, IonButtons, IonIcon } from '@ionic/vue';
+import { ref, onMounted, onUnmounted } from 'vue';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem, IonLabel, IonButton, IonButtons, IonIcon, IonChip } from '@ionic/vue';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import api from '../services/api';
 import { useUserRole } from '../composables/useUserRole';
 import ManagerPanel from '../components/ManagerPanel.vue';
+import localDB from '../services/localDatabase';
+import { addIcons } from 'ionicons';
+import { cloudDone, cloudOffline } from 'ionicons/icons';
+
+addIcons({ 'cloud-done': cloudDone, 'cloud-offline': cloudOffline });
 
 const { userRole, canCreateReport, canViewReports } = useUserRole();
 
@@ -71,13 +87,36 @@ interface Road {
 
 const userEmail = ref('');
 const roads = ref<Road[]>([]);
+const isOnline = ref(navigator.onLine);
 
 const fetchRoads = async () => {
   try {
-    const response = await api.get('/roads');
-    roads.value = response.data;
+    if (navigator.onLine) {
+      // Mode en ligne - charger depuis l'API
+      const response = await api.get('/roads');
+      roads.value = response.data;
+      console.log('🌐 Routes chargées depuis l\'API:', roads.value.length);
+    } else {
+      // Mode hors ligne - charger depuis la base locale
+      const localRoads = localDB.getRoadworks();
+      roads.value = localRoads.map(r => ({
+        id: r.id,
+        designation: r.name,
+        longitude: r.longitude,
+        latitude: r.latitude
+      }));
+      console.log('📴 Routes chargées depuis la base locale:', roads.value.length);
+    }
   } catch (error) {
-    console.error('Erreur lors de la récupération des routes', error);
+    console.error('Erreur lors de la récupération des routes, fallback local:', error);
+    // Fallback sur la base locale en cas d'erreur
+    const localRoads = localDB.getRoadworks();
+    roads.value = localRoads.map(r => ({
+      id: r.id,
+      designation: r.name,
+      longitude: r.longitude,
+      latitude: r.latitude
+    }));
   }
 };
 
@@ -108,10 +147,29 @@ const logout = async () => {
   }
 };
 
+// Écouter les changements de connexion
+let unsubscribeConnection: (() => void) | null = null;
+
 onMounted(() => {
   const user = auth.currentUser;
   userEmail.value = user?.email || '';
   fetchRoads();
+  
+  // Écouter les changements de connexion
+  unsubscribeConnection = localDB.onConnectionChange((online) => {
+    isOnline.value = online;
+    console.log(`📶 Connexion: ${online ? 'En ligne' : 'Hors ligne'}`);
+    if (online) {
+      // Recharger les données quand on revient en ligne
+      fetchRoads();
+    }
+  });
+});
+
+onUnmounted(() => {
+  if (unsubscribeConnection) {
+    unsubscribeConnection();
+  }
 });
 </script>
 
@@ -232,5 +290,33 @@ onMounted(() => {
   text-align: center;
   color: #999;
   font-style: italic;
+}
+
+.connection-chip {
+  margin-right: 8px;
+  --background: transparent;
+}
+
+.offline-banner {
+  background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+  color: white;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 500;
+  animation: pulse 2s infinite;
+}
+
+.offline-banner ion-icon {
+  font-size: 20px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 </style>

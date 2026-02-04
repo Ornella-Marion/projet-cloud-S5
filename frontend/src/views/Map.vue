@@ -184,6 +184,8 @@ import {
   type RoadDetails,
   type Statistics
 } from '../services/firebaseSync';
+// Import de la base de données locale
+import localDB from '../services/localDatabase';
 
 // Enregistrer les icônes
 addIcons({
@@ -306,6 +308,42 @@ const reportForm = ref({
 const reportLoading = ref(false);
 const reportError = ref('');
 const reportSuccess = ref('');
+
+// ==========================================
+// Fonctions pour charger depuis la base locale
+// ==========================================
+
+const loadFromLocalDB = (): any[] => {
+  const localRoadworks = localDB.getRoadworks();
+  return localRoadworks.map(rw => ({
+    id: rw.id,
+    designation: rw.name,
+    latitude: rw.latitude,
+    longitude: rw.longitude,
+    area: rw.surface || 0,
+    created_at: rw.start_date,
+    roadwork: {
+      budget: rw.budget,
+      finished_at: rw.end_date,
+      status: rw.status?.name || null,
+      status_percentage: null,
+      enterprise: rw.enterprise?.name || null
+    }
+  }));
+};
+
+const loadReportsFromLocalDB = (): Report[] => {
+  const localReports = localDB.getReports();
+  return localReports.map((r, index) => ({
+    id: index + 1,
+    user_id: 0,
+    road_id: r.roadwork_id,
+    target_type: 'road',
+    report_date: r.created_at,
+    reason: r.description,
+    created_at: r.created_at
+  }));
+};
 const isOfflineMode = ref(!isOnline());
 
 // Créer un icône personnalisé pour l'utilisateur
@@ -470,41 +508,97 @@ const getUserLocation = async () => {
 };
 
 // Charger les routes depuis l'API avec détails complets et cache
+// Utilise la base locale en mode hors ligne
 const fetchRoads = async (forceRefresh = false) => {
   isLoading.value = true;
   
   try {
-    // 1. Récupérer les routes avec détails (utilise cache + Firebase sync)
-    const roadsData = await fetchRoadsWithDetails(forceRefresh);
+    let roadsData: any[] = [];
+    let reportsData: any[] = [];
+    
+    // Vérifier si on est en ligne
+    if (navigator.onLine) {
+      console.log('🌐 Mode en ligne - Chargement depuis l\'API/Firebase...');
+      
+      // 1. Récupérer les routes avec détails (utilise cache + Firebase sync)
+      try {
+        roadsData = await fetchRoadsWithDetails(forceRefresh);
+        
+        // Sauvegarder dans la base locale pour le mode hors ligne
+        // (sans typage strict pour la sauvegarde)
+        try {
+          const localRoads = roadsData.map((r: any) => ({
+            id: r.id,
+            name: r.designation || r.name,
+            description: r.description || '',
+            latitude: typeof r.latitude === 'string' ? parseFloat(r.latitude) : r.latitude,
+            longitude: typeof r.longitude === 'string' ? parseFloat(r.longitude) : r.longitude,
+            start_date: r.roadwork?.finished_at || r.created_at || new Date().toISOString(),
+            status_id: r.roadwork?.status_id || 2,
+            enterprise_id: r.roadwork?.enterprise_id,
+            budget: r.roadwork?.budget,
+            surface: r.area
+          }));
+          localDB.saveRoadworks(localRoads as any);
+          console.log('💾 Routes sauvegardées localement');
+        } catch (saveError) {
+          console.warn('⚠️ Erreur sauvegarde locale:', saveError);
+        }
+      } catch (apiError) {
+        console.warn('⚠️ Erreur API, utilisation de la base locale:', apiError);
+        roadsData = loadFromLocalDB();
+      }
+      
+      // 2. Récupérer les signalements
+      try {
+        const reportsResponse = await api.get('/reports');
+        reportsData = reportsResponse.data;
+        console.log('📋 Signalements chargés:', reportsData.length);
+      } catch (e) {
+        console.warn('⚠️ Impossible de charger les signalements depuis API:', e);
+        reportsData = loadReportsFromLocalDB();
+      }
+      
+      // 3. Récupérer les statistiques
+      const stats = await fetchStatistics(forceRefresh);
+      if (stats) {
+        statistics.value = stats;
+        console.log('📊 Statistiques chargées:', stats);
+      }
+    } else {
+      console.log('📴 Mode hors ligne - Chargement depuis la base locale...');
+      
+      // Charger depuis la base locale
+      roadsData = loadFromLocalDB();
+      reportsData = loadReportsFromLocalDB();
+      
+      // Statistiques locales
+      const localStats = localDB.getStatistics();
+      statistics.value = {
+        total_roads: localStats.totalRoadworks,
+        total_roadworks: localStats.totalRoadworks,
+        total_reports: localStats.totalReports,
+        total_budget: localStats.totalBudget,
+        total_area: 0,
+        roadworks_by_status: localStats.byStatus,
+        reports_by_type: {}
+      };
+      console.log('📊 Statistiques locales:', localStats);
+    }
     
     // Stocker les détails
     roadsWithDetails.value = roadsData.map((road: any) => ({
       ...road,
       latitude: typeof road.latitude === 'string' ? parseFloat(road.latitude) : road.latitude,
       longitude: typeof road.longitude === 'string' ? parseFloat(road.longitude) : road.longitude,
-      area: typeof road.area === 'string' ? parseFloat(road.area) : road.area,
+      area: typeof road.area === 'string' ? parseFloat(road.area) : (road.surface || 0),
     }));
     
     // Copier pour la liste simple
     roads.value = roadsWithDetails.value;
+    reports.value = reportsData;
     
-    console.log('🗺️ Routes avec détails chargées:', roadsWithDetails.value.length);
-    
-    // 2. Récupérer les signalements
-    try {
-      const reportsResponse = await api.get('/reports');
-      reports.value = reportsResponse.data;
-      console.log('📋 Signalements chargés:', reports.value.length);
-    } catch (e) {
-      console.warn('⚠️ Impossible de charger les signalements (mode hors ligne?):', e);
-    }
-    
-    // 3. Récupérer les statistiques
-    const stats = await fetchStatistics(forceRefresh);
-    if (stats) {
-      statistics.value = stats;
-      console.log('📊 Statistiques chargées:', stats);
-    }
+    console.log('🗺️ Routes chargées:', roadsWithDetails.value.length);
     
     // Mettre à jour l'heure de dernière sync
     lastSyncTime.value = new Date();

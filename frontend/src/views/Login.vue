@@ -3,6 +3,13 @@
     <ion-content class="login-container">
       <div class="login-form">
         <h1 class="app-title">Mon App</h1>
+        
+        <!-- Indicateur mode hors ligne -->
+        <div v-if="!isOnline" class="offline-banner">
+          <ion-icon name="cloud-offline"></ion-icon>
+          <span>Mode hors ligne</span>
+        </div>
+        
         <ion-item class="input-item">
           <ion-label position="floating">Email</ion-label>
           <ion-input v-model="email" type="email"></ion-input>
@@ -11,7 +18,10 @@
           <ion-label position="floating">Mot de passe</ion-label>
           <ion-input v-model="password" type="password"></ion-input>
         </ion-item>
-        <ion-button expand="full" class="login-btn" @click="login" :disabled="loading">Se connecter</ion-button>
+        <ion-button expand="full" class="login-btn" @click="login" :disabled="loading">
+          <ion-spinner v-if="loading" name="crescent" style="margin-right: 8px;"></ion-spinner>
+          {{ loading ? 'Connexion...' : 'Se connecter' }}
+        </ion-button>
         <div class="auth-links">
           <ion-button fill="clear" router-link="/forgot-password" class="forgot-password-link">
             Mot de passe oublié ?
@@ -31,15 +41,89 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { IonPage, IonContent, IonItem, IonLabel, IonInput, IonButton, IonText } from '@ionic/vue';
+import { ref, onMounted, onUnmounted } from 'vue';
+import { IonPage, IonContent, IonItem, IonLabel, IonInput, IonButton, IonText, IonIcon, IonSpinner } from '@ionic/vue';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase';
+import { addIcons } from 'ionicons';
+import { cloudOffline } from 'ionicons/icons';
+
+addIcons({ 'cloud-offline': cloudOffline });
+
+// Clé pour stocker les credentials en cache (hors ligne)
+const OFFLINE_AUTH_KEY = 'offline_auth_cache';
 
 const email = ref('');
 const password = ref('');
 const errors = ref<string[]>([]);
 const loading = ref(false);
+const isOnline = ref(navigator.onLine);
+
+// Écouter les changements de connexion
+const updateOnlineStatus = () => {
+  isOnline.value = navigator.onLine;
+};
+
+onMounted(() => {
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('online', updateOnlineStatus);
+  window.removeEventListener('offline', updateOnlineStatus);
+});
+
+// Hasher le mot de passe pour le cache (simple hash pour comparaison locale)
+const simpleHash = (str: string): string => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return hash.toString(36);
+};
+
+// Sauvegarder les credentials en cache après login réussi
+const saveOfflineCredentials = (userEmail: string, userPassword: string, userData: any, token: string) => {
+  const cache = {
+    email: userEmail,
+    passwordHash: simpleHash(userPassword),
+    userData,
+    token,
+    savedAt: Date.now()
+  };
+  localStorage.setItem(OFFLINE_AUTH_KEY, JSON.stringify(cache));
+  console.log('💾 Credentials sauvegardés pour mode hors ligne');
+};
+
+// Vérifier les credentials en mode hors ligne
+const checkOfflineCredentials = (userEmail: string, userPassword: string): { valid: boolean; userData?: any; token?: string } => {
+  try {
+    const cached = localStorage.getItem(OFFLINE_AUTH_KEY);
+    if (!cached) return { valid: false };
+    
+    const { email, passwordHash, userData, token, savedAt } = JSON.parse(cached);
+    
+    // Vérifier si le cache n'est pas trop vieux (7 jours max)
+    const maxAge = 7 * 24 * 60 * 60 * 1000;
+    if (Date.now() - savedAt > maxAge) {
+      console.log('⚠️ Cache hors ligne expiré');
+      return { valid: false };
+    }
+    
+    // Vérifier email et mot de passe
+    if (email === userEmail && passwordHash === simpleHash(userPassword)) {
+      console.log('✅ Credentials hors ligne valides');
+      return { valid: true, userData, token };
+    }
+    
+    return { valid: false };
+  } catch {
+    return { valid: false };
+  }
+};
 
 const login = async () => {
   loading.value = true;
@@ -56,40 +140,67 @@ const login = async () => {
     return;
   }
   
-  // Supprimer l'ancien token avant la nouvelle connexion
+  // Mode HORS LIGNE
+  if (!navigator.onLine) {
+    console.log('📴 Mode hors ligne - Vérification credentials locaux...');
+    
+    const offlineCheck = checkOfflineCredentials(email.value, password.value);
+    
+    if (offlineCheck.valid && offlineCheck.token) {
+      console.log('✅ Connexion hors ligne réussie pour:', email.value);
+      localStorage.setItem('token', offlineCheck.token);
+      
+      // Stocker les infos utilisateur pour le mode hors ligne
+      if (offlineCheck.userData) {
+        localStorage.setItem('offline_user', JSON.stringify(offlineCheck.userData));
+      }
+      
+      window.location.href = '/dashboard';
+      return;
+    } else {
+      errors.value.push('Mode hors ligne: Identifiants non reconnus. Connectez-vous d\'abord en ligne.');
+      loading.value = false;
+      return;
+    }
+  }
+  
+  // Mode EN LIGNE - Supprimer l'ancien token avant la nouvelle connexion
   localStorage.removeItem('token');
   console.log('🗑️ Ancien token supprimé du localStorage');
   
   try {
+    // 1. Firebase Auth
     const userCredential = await signInWithEmailAndPassword(auth, email.value, password.value);
     console.log('🔐 Firebase login réussi pour:', email.value);
     console.log('🔐 Firebase UID:', userCredential.user.uid);
     
-    // Synchroniser avec le backend Laravel pour obtenir le token
+    // 2. Synchroniser avec le backend Laravel pour obtenir le token
     try {
       const res = await (await import('../services/api')).default.post('/auth/login', {
         email: email.value,
         password: password.value
       });
       
-      // Vérifier que le token correspond bien à l'utilisateur connecté
-      console.log('✅ Token Laravel reçu pour user:', res.data.user?.name, 'ID:', res.data.user?.id, 'Email:', res.data.user?.email);
+      console.log('✅ Token Laravel reçu pour user:', res.data.user?.name, 'ID:', res.data.user?.id);
       
-      if (res.data.user?.email !== email.value) {
-        console.error('❌ ERREUR: Email du token ne correspond pas!');
-        console.error('Email attendu:', email.value);
-        console.error('Email reçu:', res.data.user?.email);
-      }
-      
+      // Sauvegarder le token
       localStorage.setItem('token', res.data.token);
       console.log('💾 Token stocké dans localStorage');
-    } catch (e) {
-      errors.value.push('Connexion Laravel échouée.');
+      
+      // Sauvegarder pour le mode hors ligne
+      saveOfflineCredentials(email.value, password.value, res.data.user, res.data.token);
+      
+    } catch (e: any) {
+      console.error('❌ Erreur Laravel:', e);
+      errors.value.push('Connexion au serveur échouée. Vérifiez votre connexion.');
       loading.value = false;
       return;
     }
+    
     window.location.href = '/dashboard';
   } catch (error: any) {
+    console.error('❌ Erreur Firebase:', error);
+    
     if (error.code === 'auth/user-not-found') {
       errors.value.push("Aucun utilisateur trouvé avec cet email");
     } else if (error.code === 'auth/wrong-password') {
@@ -98,8 +209,24 @@ const login = async () => {
       errors.value.push('Email invalide');
     } else if (error.code === 'auth/too-many-requests') {
       errors.value.push('Trop de tentatives, réessayez plus tard');
+    } else if (error.code === 'auth/network-request-failed') {
+      // Erreur réseau - essayer mode hors ligne
+      console.log('📴 Erreur réseau Firebase - Tentative mode hors ligne...');
+      const offlineCheck = checkOfflineCredentials(email.value, password.value);
+      
+      if (offlineCheck.valid && offlineCheck.token) {
+        console.log('✅ Fallback hors ligne réussi');
+        localStorage.setItem('token', offlineCheck.token);
+        if (offlineCheck.userData) {
+          localStorage.setItem('offline_user', JSON.stringify(offlineCheck.userData));
+        }
+        window.location.href = '/dashboard';
+        return;
+      } else {
+        errors.value.push('Pas de connexion internet. Connectez-vous d\'abord en ligne.');
+      }
     } else {
-      errors.value.push('Erreur lors de la connexion');
+      errors.value.push('Erreur lors de la connexion: ' + (error.message || 'Inconnue'));
     }
   } finally {
     loading.value = false;
@@ -192,5 +319,28 @@ const login = async () => {
 
 .input-item ion-input {
   --color: black !important;
+}
+
+.offline-banner {
+  background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+  color: white;
+  padding: 10px 16px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 500;
+  animation: pulse 2s infinite;
+}
+
+.offline-banner ion-icon {
+  font-size: 20px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 </style>
