@@ -89,3 +89,15 @@ CREATE TABLE roadwork_status(
    FOREIGN KEY(roadwork_id) REFERENCES roadworks(id),
    FOREIGN KEY(status_id) REFERENCES status(id)
 );
+
+CREATE TABLE reporting(
+   id SERIAL,
+   report_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+   description TEXT  NOT NULL,
+   road_id INTEGER NOT NULL,
+   user_id INTEGER NOT NULL,
+   target_type VARCHAR(50) NOT NULL,
+   PRIMARY KEY(id),
+   FOREIGN KEY(road_id) REFERENCES roads(id),
+   FOREIGN KEY(user_id) REFERENCES users(id)
+);
