@@ -138,6 +138,29 @@ paths:
         '401':
           description: Unauthenticated
 
+  /api/auth/logout:
+    post:
+      tags:
+        - Authentification
+      summary: Se déconnecter
+      description: Déconnecter l'utilisateur et invalider son token
+      operationId: logout
+      security:
+        - sanctum: []
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Déconnecté avec succès"
+        '401':
+          description: Unauthenticated
+
   /api/firebase/check-configuration:
     get:
       tags:
