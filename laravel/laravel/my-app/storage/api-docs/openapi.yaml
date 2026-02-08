@@ -1,0 +1,401 @@
+openapi: 3.0.0
+info:
+  title: Firebase Integration API
+  description: |
+    # API Firebase Integration
+    
+    Cette API permet l'intégration complète avec Firebase, incluant:
+    - Authentification avec Laravel Sanctum
+    - Synchronisation bidirectionnelle Firestore/Realtime Database
+    - Gestion du stockage cloud
+    - Envoi de notifications push
+    - Changement automatique de source de données
+    
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000
+    description: Development server
+  - url: https://api.example.com
+    description: Production server
+
+paths:
+  /api/auth/login:
+    post:
+      tags:
+        - Authentification
+      summary: Login utilisateur
+      description: Authentifier un utilisateur et obtenir un token Sanctum
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  example: password123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  token:
+                    type: string
+                  user:
+                    type: object
+        '401':
+          description: Invalid credentials
+
+  /api/firebase/check-configuration:
+    get:
+      tags:
+        - Firebase Configuration
+      summary: Vérifier la configuration Firebase
+      description: Retourne l'état de configuration de Firebase
+      operationId: checkConfiguration
+      security:
+        - sanctum: []
+      responses:
+        '200':
+          description: Configuration status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  project_id:
+                    type: string
+                  services:
+                    type: object
+
+  /api/firebase/check-internet:
+    get:
+      tags:
+        - Firebase Configuration
+      summary: Vérifier la connexion Internet et Firebase
+      description: Teste la connectivité Internet et l'accès aux services Firebase
+      operationId: checkInternet
+      security:
+        - sanctum: []
+      responses:
+        '200':
+          description: Connection status
+
+  /api/firebase/firestore/write:
+    post:
+      tags:
+        - Firebase Firestore
+      summary: Écrire un document Firestore
+      description: Écrire ou mettre à jour un document dans Firestore
+      operationId: writeFirestore
+      security:
+        - sanctum: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - collection
+                - document_id
+                - data
+              properties:
+                collection:
+                  type: string
+                  example: users
+                document_id:
+                  type: string
+                  example: user123
+                data:
+                  type: object
+      responses:
+        '201':
+          description: Document written successfully
+        '422':
+          description: Validation error
+        '403':
+          description: Service not enabled
+
+  /api/firebase/firestore/read/{collection}/{document_id}:
+    get:
+      tags:
+        - Firebase Firestore
+      summary: Lire un document Firestore
+      description: Récupérer un document depuis Firestore
+      operationId: readFirestore
+      security:
+        - sanctum: []
+      parameters:
+        - name: collection
+          in: path
+          required: true
+          schema:
+            type: string
+          example: users
+        - name: document_id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: user123
+      responses:
+        '200':
+          description: Document retrieved
+        '404':
+          description: Document not found
+
+  /api/firebase/realtime-db/write:
+    post:
+      tags:
+        - Firebase Realtime DB
+      summary: Écrire dans Realtime Database
+      operationId: writeRealtimeDb
+      security:
+        - sanctum: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - path
+                - data
+              properties:
+                path:
+                  type: string
+                  example: users/user123
+                data:
+                  type: object
+      responses:
+        '201':
+          description: Data written successfully
+
+  /api/firebase/realtime-db/read/{path}:
+    get:
+      tags:
+        - Firebase Realtime DB
+      summary: Lire depuis Realtime Database
+      operationId: readRealtimeDb
+      security:
+        - sanctum: []
+      parameters:
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+          example: users/user123
+      responses:
+        '200':
+          description: Data retrieved
+
+  /api/firebase/storage/upload:
+    post:
+      tags:
+        - Firebase Storage
+      summary: Uploader un fichier
+      operationId: uploadStorage
+      security:
+        - sanctum: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - path
+              properties:
+                file:
+                  type: string
+                  format: binary
+                path:
+                  type: string
+      responses:
+        '201':
+          description: File uploaded
+
+  /api/firebase/messaging/send:
+    post:
+      tags:
+        - Firebase Messaging
+      summary: Envoyer une notification push
+      operationId: sendNotification
+      security:
+        - sanctum: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - title
+                - body
+              properties:
+                token:
+                  type: string
+                title:
+                  type: string
+                body:
+                  type: string
+                data:
+                  type: object
+      responses:
+        '201':
+          description: Notification sent
+
+  /api/firebase/sync:
+    post:
+      tags:
+        - Firebase Synchronization
+      summary: Synchroniser des données vers Firebase
+      operationId: syncToFirebase
+      security:
+        - sanctum: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - destination
+              properties:
+                destination:
+                  type: string
+                  enum: [firestore, realtime_db]
+                collection:
+                  type: string
+                document_id:
+                  type: string
+                path:
+                  type: string
+                data:
+                  type: object
+      responses:
+        '201':
+          description: Sync successful
+        '422':
+          description: Validation error
+
+  /api/firebase/sync-from:
+    post:
+      tags:
+        - Firebase Synchronization
+      summary: Récupérer des données depuis Firebase
+      operationId: syncFromFirebase
+      security:
+        - sanctum: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - source
+              properties:
+                source:
+                  type: string
+                  enum: [firestore, realtime_db]
+                collection:
+                  type: string
+                document_id:
+                  type: string
+                path:
+                  type: string
+      responses:
+        '200':
+          description: Data retrieved
+        '404':
+          description: Data not found
+
+  /api/datasource/status:
+    get:
+      tags:
+        - DataSource Management
+      summary: Statut de connexion DataSource
+      operationId: datasourceStatus
+      security:
+        - sanctum: []
+      responses:
+        '200':
+          description: DataSource status
+
+  /api/datasource/force:
+    post:
+      tags:
+        - DataSource Management
+      summary: Forcer une source de données spécifique
+      operationId: forceDatasource
+      security:
+        - sanctum: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - datasource
+              properties:
+                datasource:
+                  type: string
+                  enum: [firebase, postgresql]
+      responses:
+        '200':
+          description: DataSource forced
+
+components:
+  securitySchemes:
+    sanctum:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Laravel Sanctum token
+
+tags:
+  - name: Authentification
+    description: Endpoints d'authentification
+  - name: Firebase Configuration
+    description: Configuration et vérification Firebase
+  - name: Firebase Firestore
+    description: Opérations Firestore
+  - name: Firebase Realtime DB
+    description: Opérations Realtime Database
+  - name: Firebase Storage
+    description: Opérations Cloud Storage
+  - name: Firebase Messaging
+    description: Notifications Push
+  - name: Firebase Synchronization
+    description: Synchronisation bidirectionnelle
+  - name: DataSource Management
+    description: Gestion des sources de données

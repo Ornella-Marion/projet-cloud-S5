@@ -8,6 +8,56 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\DataSourceController;
 
+// Route Swagger UI
+Route::get('/documentation', function () {
+    $openapiyaml = storage_path('api-docs/openapi.yaml');
+    if (!file_exists($openapiyaml)) {
+        abort(404, 'OpenAPI spec not found');
+    }
+
+    $html = <<<'HTML'
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>API Documentation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui.min.css">
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.18.3/swagger-ui-bundle.min.js"></script>
+    <script>
+    window.onload = function() {
+      SwaggerUIBundle({
+        url: "/api/openapi.yaml",
+        dom_id: '#swagger-ui',
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIBundle.SwaggerUIStandalonePreset
+        ],
+        layout: "BaseLayout",
+        deepLinking: true
+      })
+    }
+    </script>
+  </body>
+</html>
+HTML;
+    return response($html, 200, ['Content-Type' => 'text/html; charset=utf-8']);
+});
+
+Route::get('/openapi.yaml', function () {
+    $openapiyaml = storage_path('api-docs/openapi.yaml');
+    if (!file_exists($openapiyaml)) {
+        abort(404, 'OpenAPI spec not found');
+    }
+    return response()->file($openapiyaml, [
+        'Content-Type' => 'text/plain; charset=utf-8',
+        'Access-Control-Allow-Origin' => '*',
+    ]);
+});
 
 Route::prefix('auth')->group(function () {
     Route::post('/signup', [AuthController::class, 'signup'])
