@@ -161,6 +161,93 @@ paths:
         '401':
           description: Unauthenticated
 
+  /api/users/me:
+    get:
+      tags:
+        - User Management
+      summary: Récupérer le profil de l'utilisateur authentifié
+      description: Récupérer les informations complètes de l'utilisateur actuellement connecté
+      operationId: getProfile
+      security:
+        - sanctum: []
+      responses:
+        '200':
+          description: Profil de l'utilisateur authentifié
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      email:
+                        type: string
+                      role:
+                        type: string
+                      created_at:
+                        type: string
+                        format: date-time
+                      updated_at:
+                        type: string
+                        format: date-time
+                      is_locked:
+                        type: boolean
+                      recent_login_attempts:
+                        type: array
+                      account_lock:
+                        type: object
+        '401':
+          description: Non authentifié
+    put:
+      tags:
+        - User Management
+      summary: Mettre à jour le profil de l'utilisateur authentifié
+      description: Mettre à jour le nom, email ou mot de passe de l'utilisateur connecté
+      operationId: updateProfile
+      security:
+        - sanctum: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: Jane Doe
+                email:
+                  type: string
+                  format: email
+                  example: jane@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                password_confirmation:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Profil mis à jour avec succès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+        '422':
+          description: Erreur de validation
+        '401':
+          description: Non authentifié
+
   /api/firebase/check-configuration:
     get:
       tags:
