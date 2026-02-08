@@ -16,6 +16,28 @@ class AuthController extends Controller
 
     /**
      * @OA\Post(
+     *     path="/api/auth/register",
+     *     summary="S'inscrire / Créer un nouveau compte",
+     *     tags={"Authentication"},
+     *     @OA\RequestBody(
+     *         required=true,
+     *         @OA\JsonContent(
+     *             required={"email","password","name"},
+     *             @OA\Property(property="email", type="string", format="email", example="user@example.com"),
+     *             @OA\Property(property="password", type="string", format="password", example="password123"),
+     *             @OA\Property(property="name", type="string", example="John Doe")
+     *         )
+     *     ),
+     *     @OA\Response(status=201, description="Compte créé avec succès", @OA\JsonContent(
+     *         @OA\Property(property="message", type="string"),
+     *         @OA\Property(property="token", type="string"),
+     *         @OA\Property(property="user", type="object")
+     *     )),
+     *     @OA\Response(status=400, description="Email déjà existant ou données invalides")
+     * )
+     */
+    /**
+     * @OA\Post(
      *     path="/api/auth/signup",
      *     summary="Créer un nouveau compte",
      *     tags={"Authentication"},

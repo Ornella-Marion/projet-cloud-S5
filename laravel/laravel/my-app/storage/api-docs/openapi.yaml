@@ -25,6 +25,53 @@ servers:
     description: Production server
 
 paths:
+  /api/auth/register:
+    post:
+      tags:
+        - Authentification
+      summary: S'inscrire / Créer un nouveau compte
+      description: Enregistrer un nouvel utilisateur et obtenir un token Sanctum
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - name
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: user@example.com
+                password:
+                  type: string
+                  format: password
+                  example: password123
+                name:
+                  type: string
+                  example: John Doe
+      responses:
+        '201':
+          description: Compte créé avec succès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Utilisateur créé"
+                  token:
+                    type: string
+                  user:
+                    type: object
+        '400':
+          description: Email déjà existant ou données invalides
+
   /api/auth/login:
     post:
       tags:
@@ -66,6 +113,30 @@ paths:
                     type: object
         '401':
           description: Invalid credentials
+
+  /api/auth/refresh:
+    post:
+      tags:
+        - Authentification
+      summary: Renouveler le token d'authentification
+      description: Générer un nouveau token Sanctum pour l'utilisateur authentifié
+      operationId: refreshToken
+      security:
+        - sanctum: []
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    type: object
+        '401':
+          description: Unauthenticated
 
   /api/firebase/check-configuration:
     get:
