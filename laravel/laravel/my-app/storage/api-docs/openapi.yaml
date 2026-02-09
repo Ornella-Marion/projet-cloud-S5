@@ -161,6 +161,69 @@ paths:
         '401':
           description: Unauthenticated
 
+  /api/users:
+    get:
+      tags:
+        - User Management
+      summary: Lister tous les utilisateurs (Manager only)
+      description: Récupérer la liste paginée de tous les utilisateurs avec filtres
+      operationId: index
+      security:
+        - sanctum: []
+      parameters:
+        - name: page
+          in: query
+          description: Numéro de page
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          description: Nombre d'éléments par page (max 100)
+          schema:
+            type: integer
+            default: 15
+            maximum: 100
+        - name: role
+          in: query
+          description: Filtrer par rôle (visitor, user, manager)
+          schema:
+            type: string
+            enum:
+              - visitor
+              - user
+              - manager
+        - name: search
+          in: query
+          description: Rechercher par nom ou email
+          schema:
+            type: string
+        - name: locked
+          in: query
+          description: Filtrer par statut de verrou (0=déverrouillés, 1=verrouillés)
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Liste des utilisateurs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                  pagination:
+                    type: object
+                  filters:
+                    type: object
+        '401':
+          description: Non authentifié
+        '403':
+          description: Non autorisé - Manager only
+
   /api/users/me:
     get:
       tags:
