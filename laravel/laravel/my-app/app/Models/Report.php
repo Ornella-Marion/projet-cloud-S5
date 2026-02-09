@@ -17,6 +17,8 @@ class Report extends Model
         'target_type',
         'report_date',
         'reason',
+        'status',
+        'photo_path',
     ];
 
     public function user(): BelongsTo

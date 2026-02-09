@@ -289,10 +289,10 @@ class AuthController extends Controller
             return response()->json(['error' => 'Non autorisé'], 403);
         }
 
-        $lockedUsers = User::whereHas('accountLock', function($query) {
-            $query->where(function($q) {
+        $lockedUsers = User::whereHas('accountLock', function ($query) {
+            $query->where(function ($q) {
                 $q->whereNull('unlock_at')
-                  ->orWhere('unlock_at', '>', now());
+                    ->orWhere('unlock_at', '>', now());
             });
         })->get(['id', 'name', 'email']);
 
@@ -326,6 +326,60 @@ class AuthController extends Controller
                 'role' => $user->role,
                 'is_active' => $user->is_active,
             ]
+        ]);
+    }
+
+    /**
+     * #110 — POST /api/manager/sync — Synchronisation Firebase
+     * Synchronise les utilisateurs Laravel avec Firebase Auth
+     * Manager uniquement
+     */
+    public function syncFirebase(Request $request)
+    {
+        $currentUser = $request->user();
+        if (!$currentUser || $currentUser->role !== 'manager') {
+            return response()->json(['error' => 'Accès refusé. Réservé aux managers.'], 403);
+        }
+
+        $firebaseService = new FirebaseAuthService();
+        $users = User::all();
+        $synced = 0;
+        $failed = 0;
+        $alreadyExists = 0;
+        $errors = [];
+
+        foreach ($users as $user) {
+            // Vérifier si l'utilisateur existe déjà dans Firebase
+            if ($firebaseService->userExists($user->email)) {
+                $alreadyExists++;
+                continue;
+            }
+
+            // Créer l'utilisateur dans Firebase
+            // On génère un mot de passe temporaire car on n'a pas le mot de passe en clair
+            $result = $firebaseService->createUser($user->email, 'TempSync_' . bin2hex(random_bytes(4)));
+
+            if ($result['success']) {
+                $synced++;
+                \Log::info('Firebase sync: utilisateur synchronisé - ' . $user->email);
+            } else {
+                if (strpos($result['error'], 'EMAIL_EXISTS') !== false) {
+                    $alreadyExists++;
+                } else {
+                    $failed++;
+                    $errors[] = ['email' => $user->email, 'error' => $result['error']];
+                    \Log::error('Firebase sync: erreur pour ' . $user->email . ' - ' . $result['error']);
+                }
+            }
+        }
+
+        return response()->json([
+            'message' => 'Synchronisation Firebase terminée',
+            'total_users' => $users->count(),
+            'synced' => $synced,
+            'already_exists' => $alreadyExists,
+            'failed' => $failed,
+            'errors' => $errors,
         ]);
     }
 }

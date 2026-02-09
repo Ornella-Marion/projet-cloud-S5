@@ -34,11 +34,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/reports', [ReportController::class, 'store']);
     Route::get('/reports', [ReportController::class, 'index']);
     Route::get('/reports/my', [ReportController::class, 'myReports']);
-    
+    Route::get('/reports/{id}', [ReportController::class, 'show']);
+    Route::put('/reports/{id}', [ReportController::class, 'update']);
+    Route::delete('/reports/{id}', [ReportController::class, 'destroy']);
+
     // Travaux routiers avec infos complètes
     Route::get('/roadworks', [RoadworkController::class, 'index']);
     Route::get('/roads-details', [RoadworkController::class, 'getAllRoadsWithDetails']);
     Route::get('/roads/{roadId}/details', [RoadworkController::class, 'getRoadDetails']);
+
+    // #112 — Modifier statut travaux d'une route (Manager only)
+    Route::put('/roads/{id}/status', [RoadworkController::class, 'updateRoadStatus']);
+    // #113 — Modifier détails d'une route (surface, budget, entreprise) (Manager only)
+    Route::put('/roads/{id}/road-details', [RoadworkController::class, 'updateRoadDetails']);
+
+    // #110 — Synchronisation Firebase (Manager only)
+    Route::post('/manager/sync', [AuthController::class, 'syncFirebase']);
 });
 
 Route::get('/health', function () {
