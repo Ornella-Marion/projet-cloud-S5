@@ -169,12 +169,8 @@ const login = async () => {
   console.log('🗑️ Ancien token supprimé du localStorage');
   
   try {
-    // 1. Firebase Auth
-    const userCredential = await signInWithEmailAndPassword(auth, email.value, password.value);
-    console.log('🔐 Firebase login réussi pour:', email.value);
-    console.log('🔐 Firebase UID:', userCredential.user.uid);
-    
-    // 2. Synchroniser avec le backend Laravel pour obtenir le token
+    // 1. D'ABORD Laravel (le plus important - donne le token d'accès API)
+    let laravelSuccess = false;
     try {
       const res = await (await import('../services/api')).default.post('/auth/login', {
         email: email.value,
@@ -189,45 +185,40 @@ const login = async () => {
       
       // Sauvegarder pour le mode hors ligne
       saveOfflineCredentials(email.value, password.value, res.data.user, res.data.token);
+      laravelSuccess = true;
       
     } catch (e: any) {
       console.error('❌ Erreur Laravel:', e);
-      errors.value.push('Connexion au serveur échouée. Vérifiez votre connexion.');
+      const status = e?.response?.status;
+      const msg = e?.response?.data?.message || e?.message || '';
+      
+      if (status === 401 || status === 422) {
+        errors.value.push('Email ou mot de passe incorrect');
+      } else if (status === 403) {
+        errors.value.push('Compte désactivé. Contactez un administrateur.');
+      } else {
+        errors.value.push('Serveur indisponible (' + (status || 'réseau') + '): ' + msg);
+      }
       loading.value = false;
       return;
     }
     
+    // 2. ENSUITE Firebase (pour la sync Firestore, pas bloquant)
+    if (laravelSuccess) {
+      try {
+        await signInWithEmailAndPassword(auth, email.value, password.value);
+        console.log('🔐 Firebase login réussi');
+      } catch (firebaseError: any) {
+        // Firebase échoue ? Pas grave, le login Laravel a réussi.
+        // L'utilisateur peut quand même utiliser l'app.
+        console.warn('⚠️ Firebase auth échouée (non bloquant):', firebaseError.code, firebaseError.message);
+      }
+    }
+    
     window.location.href = '/dashboard';
   } catch (error: any) {
-    console.error('❌ Erreur Firebase:', error);
-    
-    if (error.code === 'auth/user-not-found') {
-      errors.value.push("Aucun utilisateur trouvé avec cet email");
-    } else if (error.code === 'auth/wrong-password') {
-      errors.value.push('Mot de passe incorrect');
-    } else if (error.code === 'auth/invalid-email') {
-      errors.value.push('Email invalide');
-    } else if (error.code === 'auth/too-many-requests') {
-      errors.value.push('Trop de tentatives, réessayez plus tard');
-    } else if (error.code === 'auth/network-request-failed') {
-      // Erreur réseau - essayer mode hors ligne
-      console.log('📴 Erreur réseau Firebase - Tentative mode hors ligne...');
-      const offlineCheck = checkOfflineCredentials(email.value, password.value);
-      
-      if (offlineCheck.valid && offlineCheck.token) {
-        console.log('✅ Fallback hors ligne réussi');
-        localStorage.setItem('token', offlineCheck.token);
-        if (offlineCheck.userData) {
-          localStorage.setItem('offline_user', JSON.stringify(offlineCheck.userData));
-        }
-        window.location.href = '/dashboard';
-        return;
-      } else {
-        errors.value.push('Pas de connexion internet. Connectez-vous d\'abord en ligne.');
-      }
-    } else {
-      errors.value.push('Erreur lors de la connexion: ' + (error.message || 'Inconnue'));
-    }
+    console.error('❌ Erreur login:', error);
+    errors.value.push('Erreur: ' + (error.code || '') + ' ' + (error.message || 'Inconnue'));
   } finally {
     loading.value = false;
   }
@@ -244,13 +235,17 @@ const login = async () => {
 }
 
 .login-form {
-  background: white;
+  background: #ffffff;
   padding: 40px;
   border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
   width: 100%;
   max-width: 400px;
   text-align: center;
+  color: #333333;
+  --ion-background-color: #ffffff;
+  --ion-text-color: #333333;
+  --ion-item-background: #f9f9f9;
 }
 
 .app-title {
@@ -267,12 +262,20 @@ const login = async () => {
   margin-bottom: 20px;
   --border-color: #ddd;
   --background: #f9f9f9;
-  --color: black;
+  --color: #333333;
+  color: #333333;
 }
 
 .input-item ion-label {
-  color: #666;
+  color: #666666 !important;
+  --color: #666666;
   font-weight: 500;
+}
+
+.input-item ion-input {
+  --color: #333333 !important;
+  color: #333333 !important;
+  --placeholder-color: #999999;
 }
 
 .login-btn {
@@ -315,10 +318,6 @@ const login = async () => {
 .error-messages ul {
   list-style: none;
   padding: 0;
-}
-
-.input-item ion-input {
-  --color: black !important;
 }
 
 .offline-banner {

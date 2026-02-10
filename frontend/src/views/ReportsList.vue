@@ -37,8 +37,7 @@
               <h2>{{ filteredReports.length }} signalement(s) trouvé(s)</h2>
             </ion-label>
           </ion-item-divider>
-          
-          <ion-item v-for="report in filteredReports" :key="report.id" class="report-item">
+          <ion-item v-for="report in filteredReports" :key="report.id" class="report-item" @click="goToDetail(report.id)" style="cursor:pointer;">
             <ion-label>
               <h4>{{ report.target_type }}</h4>
               <p><strong>Utilisateur :</strong> {{ report.user?.name || 'Inconnu' }}</p>
@@ -47,6 +46,9 @@
               <p v-else><strong>Route :</strong> -</p>
               <p><strong>Date :</strong> {{ formatDate(report.report_date) }}</p>
               <p><strong>Raison :</strong> {{ report.reason }}</p>
+              <div v-if="report.photo_path" class="report-photo">
+                <img :src="`/storage/${report.photo_path}`" alt="Photo du signalement" @error="($event.target as HTMLImageElement).style.display='none'" />
+              </div>
               <p class="created-at"><small>Créé le : {{ formatDateTime(report.created_at) }}</small></p>
             </ion-label>
           </ion-item>
@@ -98,6 +100,7 @@ interface Report {
   report_date: string;
   reason: string;
   created_at: string;
+  photo_path?: string | null;
   user?: User;
   road?: Road;
 }
@@ -206,6 +209,11 @@ const formatDateTime = (dateTimeString: string): string => {
 const goBack = () => {
   router.back();
 };
+
+const goToDetail = (id: number) => {
+  router.push({ name: 'DetailSignalement', params: { id } });
+};
+
 </script>
 
 <style scoped>
@@ -273,6 +281,17 @@ const goBack = () => {
 .created-at {
   color: #999;
   margin-top: 8px;
+}
+
+.report-photo {
+  margin: 8px 0;
+}
+.report-photo img {
+  max-width: 100%;
+  max-height: 150px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid #ddd;
 }
 
 .loading-spinner {

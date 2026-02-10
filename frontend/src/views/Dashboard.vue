@@ -9,8 +9,14 @@
             <ion-icon :name="isOnline ? 'cloud-done' : 'cloud-offline'"></ion-icon>
             <ion-label>{{ isOnline ? 'En ligne' : 'Hors ligne' }}</ion-label>
           </ion-chip>
+          <!-- Bouton notifications avec badge -->
+          <ion-button @click="goToNotifications" class="notif-btn" fill="clear">
+            <ion-icon slot="icon-only" name="notifications-outline"></ion-icon>
+            <NotificationsBadge />
+          </ion-button>
           <ion-button class="logout-btn" @click="logout">Déconnexion</ion-button>
         </ion-buttons>
+      
       </ion-toolbar>
     </ion-header>
     <ion-content class="dashboard-content">
@@ -63,6 +69,12 @@
 </template>
 
 <script setup lang="ts">
+import NotificationsBadge from '../components/NotificationsBadge.vue';
+import { useRouter } from 'vue-router';
+const router = useRouter();
+const goToNotifications = () => {
+  router.push({ name: 'NotificationsList' });
+};
 import { ref, onMounted, onUnmounted } from 'vue';
 import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem, IonLabel, IonButton, IonButtons, IonIcon, IonChip } from '@ionic/vue';
 import { signOut } from 'firebase/auth';
@@ -71,10 +83,6 @@ import api from '../services/api';
 import { useUserRole } from '../composables/useUserRole';
 import ManagerPanel from '../components/ManagerPanel.vue';
 import localDB from '../services/localDatabase';
-import { addIcons } from 'ionicons';
-import { cloudDone, cloudOffline } from 'ionicons/icons';
-
-addIcons({ 'cloud-done': cloudDone, 'cloud-offline': cloudOffline });
 
 const { userRole, canCreateReport, canViewReports } = useUserRole();
 

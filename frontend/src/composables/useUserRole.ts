@@ -18,7 +18,9 @@ const error = ref<string | null>(null)
 export function useUserRole() {
   // Récupérer les informations utilisateur depuis Laravel
   const fetchUserRole = async () => {
-    if (!auth.currentUser) {
+    // Vérifier si on a un token Laravel (source principale d'auth)
+    const token = localStorage.getItem('token')
+    if (!auth.currentUser && !token) {
       userRole.value = null
       userData.value = null
       return
@@ -29,8 +31,9 @@ export function useUserRole() {
 
     try {
       const response = await api.get('/auth/me')
-      userData.value = response.data.user
-      userRole.value = response.data.user.role
+      const user = response.data.user || response.data
+      userData.value = user
+      userRole.value = user.role
       console.log(`👤 Rôle utilisateur: ${userRole.value}`)
     } catch (err: any) {
       console.warn('⚠️ Impossible de récupérer le rôle utilisateur:', err.message)
@@ -45,7 +48,7 @@ export function useUserRole() {
   const isManager = computed(() => userRole.value === 'manager')
   const isUser = computed(() => userRole.value === 'user')
   const isVisitor = computed(() => userRole.value === 'visitor')
-  const isAuthenticated = computed(() => auth.currentUser !== null)
+  const isAuthenticated = computed(() => auth.currentUser !== null || !!localStorage.getItem('token'))
 
   // Vérifier une permission spécifique
   const hasRole = (role: string | string[]): boolean => {

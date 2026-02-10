@@ -44,6 +44,23 @@
         </div>
       </div>
       
+      <!-- Indicateur de statut géolocalisation -->
+      <div v-if="geoStatus === 'loading'" class="geo-status-bar loading">
+        <ion-spinner name="dots" color="light"></ion-spinner>
+        <span>Localisation en cours...</span>
+      </div>
+      <div v-if="geoStatus === 'error'" class="geo-status-bar error" @click="getUserLocation(false, true)">
+        <ion-icon name="warning"></ion-icon>
+        <span>{{ geoErrorMsg }} — Appuyez pour réessayer</span>
+      </div>
+      <div v-if="geoStatus === 'active' && isTrackingPosition" class="geo-status-bar active">
+        <ion-icon name="navigate"></ion-icon>
+        <span>Position suivie en temps réel</span>
+        <ion-button size="small" fill="clear" color="light" @click="stopWatchingPosition">
+          <ion-icon name="close" slot="icon-only"></ion-icon>
+        </ion-button>
+      </div>
+
       <!-- Contrôles de zoom -->
       <div class="zoom-controls">
         <ion-button class="zoom-btn" @click="zoomIn">
@@ -55,8 +72,11 @@
         <ion-button class="zoom-btn reset-btn" @click="resetZoom">
           <ion-icon name="home"></ion-icon>
         </ion-button>
-        <ion-button class="zoom-btn locate-btn" @click="getUserLocation" title="Ma position">
+        <ion-button class="zoom-btn locate-btn" :class="{ 'geo-active': geoStatus === 'active', 'geo-loading': geoStatus === 'loading', 'geo-error': geoStatus === 'error' }" @click="getUserLocation(false, true)" title="Ma position">
           <ion-icon name="navigate"></ion-icon>
+          <span v-if="geoStatus === 'loading'" class="geo-pulse"></span>
+          <span v-if="geoStatus === 'active'" class="geo-dot active"></span>
+          <span v-if="geoStatus === 'error'" class="geo-dot error"></span>
         </ion-button>
         <ion-button class="zoom-btn report-btn" @click="openReportModal" title="Signaler un problème">
           <ion-icon name="alert-circle"></ion-icon>
@@ -75,6 +95,15 @@
         </ion-segment>
       </div>
 
+      <!-- Bandeau mode sélection de localisation -->
+      <div v-if="isSelectingLocation" class="location-picker-bar">
+        <ion-icon name="location"></ion-icon>
+        <span>Appuyez sur la carte pour choisir l'emplacement du problème</span>
+        <ion-button size="small" fill="clear" color="light" @click="cancelLocationSelection">
+          <ion-icon name="close" slot="icon-only"></ion-icon>
+        </ion-button>
+      </div>
+
       <!-- Modal de signalement rapide -->
       <ion-modal :is-open="showReportModal" @didDismiss="showReportModal = false">
         <ion-header>
@@ -86,9 +115,26 @@
           </ion-toolbar>
         </ion-header>
         <ion-content class="ion-padding">
-          <div v-if="currentLocation" class="location-info">
-            <ion-icon name="location"></ion-icon>
-            <span>Position: {{ currentLocation.lat.toFixed(6) }}, {{ currentLocation.lng.toFixed(6) }}</span>
+          <!-- Position actuelle ou sélectionnée -->
+          <div class="location-section">
+            <div v-if="reportLocation" class="location-info">
+              <ion-icon name="location"></ion-icon>
+              <span>Position: {{ reportLocation.lat.toFixed(6) }}, {{ reportLocation.lng.toFixed(6) }}</span>
+            </div>
+            <div v-else class="location-info warning">
+              <ion-icon name="warning"></ion-icon>
+              <span>Aucune position sélectionnée</span>
+            </div>
+            <div class="location-actions">
+              <ion-button size="small" fill="outline" @click="useGpsForReport">
+                <ion-icon name="navigate" slot="start"></ion-icon>
+                Ma position GPS
+              </ion-button>
+              <ion-button size="small" fill="outline" color="tertiary" @click="pickLocationOnMap">
+                <ion-icon name="map" slot="start"></ion-icon>
+                Choisir sur la carte
+              </ion-button>
+            </div>
           </div>
           
           <ion-item>
@@ -103,20 +149,43 @@
           
           <ion-item>
             <ion-label position="floating">Type de problème</ion-label>
-            <ion-select v-model="reportForm.targetType">
-              <ion-select-option value="road">Route endommagée</ion-select-option>
-              <ion-select-option value="signalisation">Signalisation</ion-select-option>
-              <ion-select-option value="eclairage">Éclairage</ion-select-option>
-              <ion-select-option value="autre">Autre</ion-select-option>
+            <ion-select v-model="reportForm.targetType" interface="action-sheet">
+              <ion-select-option v-for="(info, key) in REPORT_TYPES" :key="key" :value="key">
+                {{ info.icon }} {{ info.label }}
+              </ion-select-option>
             </ion-select>
           </ion-item>
           
           <ion-item>
             <ion-label position="floating">Description du problème</ion-label>
-            <ion-textarea v-model="reportForm.reason" :rows="4"></ion-textarea>
+            <ion-textarea v-model="reportForm.reason" :rows="4" placeholder="Décrivez le problème observé..."></ion-textarea>
           </ion-item>
+
+          <!-- Photo section -->
+          <div class="photo-section-modal">
+            <ion-label class="photo-label-modal">📷 Photo (optionnel)</ion-label>
+            <div class="photo-btns-modal">
+              <ion-button size="small" fill="outline" @click="($refs.modalGalleryInput as HTMLInputElement)?.click()" :disabled="reportLoading">
+                <ion-icon slot="start" name="image"></ion-icon>
+                📁 Photo
+              </ion-button>
+              <ion-button size="small" fill="outline" @click="($refs.modalCameraInput as HTMLInputElement)?.click()" :disabled="reportLoading">
+                <ion-icon slot="start" name="camera"></ion-icon>
+                📸 Caméra
+              </ion-button>
+              <ion-button v-if="reportPhotoPreview" size="small" fill="outline" color="danger" @click="removeReportPhoto" :disabled="reportLoading">
+                <ion-icon slot="start" name="trash"></ion-icon>
+                Supprimer
+              </ion-button>
+            </div>
+            <input ref="modalCameraInput" type="file" accept="image/*" capture="environment" style="display:none" @change="onReportPhotoSelected" />
+            <input ref="modalGalleryInput" type="file" accept="image/*" style="display:none" @change="onReportPhotoSelected" />
+            <div v-if="reportPhotoPreview" class="photo-preview-modal">
+              <img :src="reportPhotoPreview" alt="Aperçu" />
+            </div>
+          </div>
           
-          <ion-button expand="block" color="danger" @click="submitQuickReport" :disabled="reportLoading">
+          <ion-button expand="block" color="danger" @click="submitQuickReport" :disabled="reportLoading" class="submit-report-btn">
             <ion-spinner v-if="reportLoading" name="crescent"></ion-spinner>
             <span v-else>Envoyer le signalement</span>
           </ion-button>
@@ -165,9 +234,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem, IonLabel, IonButton, IonButtons, IonIcon, IonBackButton, IonSegment, IonSegmentButton, IonModal, IonSelect, IonSelectOption, IonTextarea, IonSpinner, IonText, IonInput, IonBadge, IonChip } from '@ionic/vue';
+import { IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonList, IonItem, IonLabel, IonButton, IonButtons, IonIcon, IonBackButton, IonSegment, IonSegmentButton, IonModal, IonSelect, IonSelectOption, IonTextarea, IonSpinner, IonText, IonInput, IonBadge, IonChip, toastController } from '@ionic/vue';
 import { addIcons } from 'ionicons';
-import { add, remove, home, map as mapIcon, location, list, alertCircle, chevronUpOutline, chevronDownOutline, navigate, warning, cloudOffline, statsChart, business, cash, calendar, refresh, cloudDone } from 'ionicons/icons';
+import { add, remove, home, map as mapIcon, location, list, alertCircle, chevronUpOutline, chevronDownOutline, navigate, warning, cloudOffline, statsChart, business, cash, calendar, refresh, cloudDone, close, mapOutline } from 'ionicons/icons';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from '../services/api';
@@ -189,7 +258,8 @@ import localDB from '../services/localDatabase';
 
 // Enregistrer les icônes
 addIcons({
-  add, remove, home, map: mapIcon, location, list, alertCircle, navigate, warning,
+  add, remove, home, map: mapIcon, location, list, alertCircle, navigate, warning, close,
+  'map-outline': mapOutline,
   'chevron-up-outline': chevronUpOutline,
   'chevron-down-outline': chevronDownOutline,
   'cloud-offline': cloudOffline,
@@ -273,9 +343,31 @@ interface Report {
   report_date: string;
   reason: string;
   created_at: string;
+  photo_path?: string | null;
   user?: any;
   road?: Road;
+  latitude?: number;
+  longitude?: number;
 }
+
+// Types de problèmes routiers avec icônes et couleurs
+const REPORT_TYPES: Record<string, { label: string; icon: string; color: string }> = {
+  'nid_de_poule': { label: 'Nid-de-poule', icon: '🕳️', color: '#e53935' },
+  'fissure': { label: 'Fissure / Crevasse', icon: '⚡', color: '#d84315' },
+  'effondrement': { label: 'Effondrement de chaussée', icon: '🚧', color: '#b71c1c' },
+  'inondation': { label: 'Inondation / Eau stagnante', icon: '🌊', color: '#0277bd' },
+  'feu_signalisation': { label: 'Feu de signalisation défaillant', icon: '🚦', color: '#f57f17' },
+  'panneau': { label: 'Panneau manquant / endommagé', icon: '🪧', color: '#ef6c00' },
+  'accident': { label: 'Accident', icon: '💥', color: '#c62828' },
+  'eclairage': { label: 'Éclairage défaillant', icon: '💡', color: '#ff8f00' },
+  'road': { label: 'Route endommagée (général)', icon: '🛣️', color: '#6d4c41' },
+  'signalisation': { label: 'Signalisation', icon: '⚠️', color: '#ff6f00' },
+  'autre': { label: 'Autre problème', icon: '📋', color: '#546e7a' },
+};
+
+const getReportTypeInfo = (type: string) => {
+  return REPORT_TYPES[type] || REPORT_TYPES['autre'];
+};
 
 const mapContainer = ref<HTMLElement | null>(null);
 const roads = ref<Road[]>([]);
@@ -289,9 +381,18 @@ const isLoading = ref(false);
 const lastSyncTime = ref<Date | null>(null);
 let map: L.Map | null = null;
 let markerGroup: L.FeatureGroup | null = null;
+let reportMarkerGroup: L.FeatureGroup | null = null;
 const markers: { [key: number]: any } = {};
+const reportMarkers: { [key: string]: any } = {};
 let userMarker: L.Marker | null = null;
 let userCircle: L.Circle | null = null;
+let geoWatchId: string | null = null;
+
+// État de la géolocalisation
+const geoStatus = ref<'idle' | 'loading' | 'active' | 'error'>('idle');
+const geoErrorMsg = ref('');
+const isTrackingPosition = ref(false);
+const lastGeoUpdate = ref<Date | null>(null);
 
 // Filtre des signalements
 const reportFilter = ref<'all' | 'mine'>('all');
@@ -302,12 +403,43 @@ const showReportModal = ref(false);
 const currentLocation = ref<{ lat: number; lng: number } | null>(null);
 const reportForm = ref({
   roadId: null as number | null,
-  targetType: 'road',
+  targetType: 'nid_de_poule',
   reason: ''
 });
 const reportLoading = ref(false);
 const reportError = ref('');
 const reportSuccess = ref('');
+
+// Photo dans le modal signalement
+const reportPhotoFile = ref<Blob | null>(null);
+const reportPhotoPreview = ref<string | null>(null);
+
+const onReportPhotoSelected = async (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  try {
+    const { compressImage } = await import('../services/report');
+    const compressed = await compressImage(file, 1024, 0.7);
+    reportPhotoFile.value = compressed;
+    reportPhotoPreview.value = URL.createObjectURL(compressed);
+  } catch {
+    reportPhotoFile.value = file;
+    reportPhotoPreview.value = URL.createObjectURL(file);
+  }
+  input.value = '';
+};
+
+const removeReportPhoto = () => {
+  if (reportPhotoPreview.value) URL.revokeObjectURL(reportPhotoPreview.value);
+  reportPhotoFile.value = null;
+  reportPhotoPreview.value = null;
+};
+
+// Mode sélection de position sur la carte
+const isSelectingLocation = ref(false);
+const selectedLocation = ref<{ lat: number; lng: number } | null>(null);
+let locationPickerMarker: L.Marker | null = null;
 
 // ==========================================
 // Fonctions pour charger depuis la base locale
@@ -391,86 +523,28 @@ const createUserIcon = () => {
   });
 };
 
-// Obtenir la position utilisateur
-const getUserLocation = async () => {
-  try {
-    console.log('📍 Demande de localisation...');
-    
-    // Vérifier si la géolocalisation est disponible
-    if (!navigator.geolocation) {
-      alert('La géolocalisation n\'est pas supportée par votre navigateur');
-      return;
-    }
-    
-    // D'abord vérifier les permissions
-    try {
-      const permission = await Geolocation.checkPermissions();
-      console.log('📍 Permission actuelle:', permission.location);
-      
-      if (permission.location === 'denied') {
-        alert('Vous avez refusé l\'accès à votre position. Veuillez l\'autoriser dans les paramètres de votre navigateur.');
-        return;
-      }
-      
-      if (permission.location === 'prompt') {
-        const requested = await Geolocation.requestPermissions();
-        console.log('📍 Permission demandée:', requested.location);
-        if (requested.location === 'denied') {
-          alert('Permission de localisation refusée');
-          return;
-        }
-      }
-    } catch (permError) {
-      console.warn('⚠️ Vérification permission non disponible:', permError);
-      // Continuer quand même sur navigateur web
-    }
-    
-    // Essayer avec l'API Capacitor
-    let coordinates;
-    try {
-      coordinates = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0,
-      });
-    } catch (capacitorError: any) {
-      console.warn('⚠️ Capacitor Geolocation échoué, essai avec API Web:', capacitorError);
-      
-      // Fallback sur l'API Web standard
-      coordinates = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 0,
-        });
-      });
-    }
-    
-    const { latitude, longitude, accuracy } = coordinates.coords;
-    console.log(`✓ Position obtenue: ${latitude}, ${longitude}, Precision: ${accuracy}m`);
-    
-    if (!map) return;
-    
-    // Supprimer l'ancien marqueur s'il existe
-    if (userMarker) {
-      map.removeLayer(userMarker);
-    }
-    if (userCircle) {
-      map.removeLayer(userCircle);
-    }
-    
-    // Ajouter le cercle de précision
-    userCircle = L.circle([latitude, longitude], {
-      color: '#4CAF50',
-      weight: 2,
-      opacity: 0.3,
-      fill: true,
-      fillColor: '#4CAF50',
-      fillOpacity: 0.1,
-      radius: accuracy || 50,
-    }).addTo(map);
-    
-    // Ajouter le marqueur utilisateur
+// Mettre à jour le marqueur et le cercle de position utilisateur sur la carte
+const updateUserMarker = (latitude: number, longitude: number, accuracy: number, centerMap: boolean = false) => {
+  if (!map) return;
+
+  // Mettre à jour la position courante pour le modal de signalement
+  currentLocation.value = { lat: latitude, lng: longitude };
+  lastGeoUpdate.value = new Date();
+
+  if (userMarker) {
+    // Mise à jour fluide du marqueur existant
+    userMarker.setLatLng([latitude, longitude]);
+    userMarker.setPopupContent(`
+      <div style="text-align: center; font-size: 13px; font-family: Arial;">
+        <strong style="color: #4CAF50;">📍 Votre Position</strong><br>
+        Lat: ${latitude.toFixed(6)}<br>
+        Lon: ${longitude.toFixed(6)}<br>
+        Précision: ${accuracy ? accuracy.toFixed(0) : '?'} m<br>
+        <span style="color:#888;font-size:11px;">Mise à jour: ${new Date().toLocaleTimeString('fr-FR')}</span>
+      </div>
+    `);
+  } else {
+    // Créer le marqueur utilisateur pour la première fois
     userMarker = L.marker([latitude, longitude], {
       icon: createUserIcon(),
       zIndexOffset: 1000,
@@ -483,28 +557,247 @@ const getUserLocation = async () => {
           Précision: ${accuracy ? accuracy.toFixed(0) : '?'} m
         </div>
       `)
-      .addTo(map)
-      .openPopup();
-    
-    // Centrer la carte sur l'utilisateur avec un bon zoom
+      .addTo(map);
+  }
+
+  if (userCircle) {
+    userCircle.setLatLng([latitude, longitude]);
+    userCircle.setRadius(accuracy || 50);
+  } else {
+    userCircle = L.circle([latitude, longitude], {
+      color: '#4CAF50',
+      weight: 2,
+      opacity: 0.3,
+      fill: true,
+      fillColor: '#4CAF50',
+      fillOpacity: 0.1,
+      radius: accuracy || 50,
+    }).addTo(map);
+  }
+
+  if (centerMap) {
     map.setView([latitude, longitude], 17);
-  } catch (error: any) {
-    console.error('❌ Erreur de géolocalisation:', error);
-    
-    // Message d'erreur plus explicite
-    let errorMsg = 'Impossible de vous localiser.';
-    if (error.code === 1 || error.message?.includes('denied')) {
-      errorMsg = 'Permission de localisation refusée. Autorisez l\'accès à votre position dans les paramètres du navigateur.';
-    } else if (error.code === 2 || error.message?.includes('unavailable')) {
-      errorMsg = 'Position non disponible. Vérifiez que le GPS est activé.';
-    } else if (error.code === 3 || error.message?.includes('timeout')) {
-      errorMsg = 'Délai d\'attente dépassé. Réessayez dans un endroit avec meilleure réception GPS.';
-    } else if (error.message) {
-      errorMsg = `Erreur: ${error.message}`;
+  }
+};
+
+// Vérifier et demander les permissions de géolocalisation
+const checkAndRequestGeoPermissions = async (silent: boolean = false): Promise<boolean> => {
+  try {
+    const permission = await Geolocation.checkPermissions();
+    console.log('📍 Permission actuelle:', permission.location);
+
+    if (permission.location === 'denied') {
+      if (!silent) {
+        alert('Vous avez refusé l\'accès à votre position. Veuillez l\'autoriser dans les paramètres de votre navigateur.');
+      }
+      return false;
     }
-    
+
+    if (permission.location === 'prompt') {
+      const requested = await Geolocation.requestPermissions();
+      console.log('📍 Permission demandée:', requested.location);
+      if (requested.location === 'denied') {
+        if (!silent) {
+          alert('Permission de localisation refusée');
+        }
+        return false;
+      }
+    }
+    return true;
+  } catch (permError) {
+    console.warn('⚠️ Vérification permission non disponible (Web):', permError);
+    // Continuer quand même sur navigateur web
+    return true;
+  }
+};
+
+// Obtenir les coordonnées via Capacitor ou fallback Web
+const getCoordinates = async (options: { enableHighAccuracy: boolean; timeout: number; maximumAge: number }) => {
+  try {
+    return await Geolocation.getCurrentPosition(options);
+  } catch (capacitorError: any) {
+    console.warn('⚠️ Capacitor Geolocation échoué, essai avec API Web:', capacitorError);
+    return await new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, options);
+    });
+  }
+};
+
+// Gérer les erreurs de géolocalisation
+const handleGeoError = (error: any, silent: boolean = false) => {
+  let errorMsg = 'Impossible de vous localiser.';
+  if (error.code === 1 || error.message?.includes('denied')) {
+    errorMsg = 'Permission de localisation refusée. Autorisez l\'accès à votre position dans les paramètres du navigateur.';
+  } else if (error.code === 2 || error.message?.includes('unavailable')) {
+    errorMsg = 'Position non disponible. Vérifiez que le GPS est activé.';
+  } else if (error.code === 3 || error.message?.includes('timeout')) {
+    errorMsg = 'Délai d\'attente dépassé. Réessayez dans un endroit avec meilleure réception GPS.';
+  } else if (error.message) {
+    errorMsg = `Erreur: ${error.message}`;
+  }
+
+  geoErrorMsg.value = errorMsg;
+  geoStatus.value = 'error';
+  console.error('❌ Erreur de géolocalisation:', errorMsg);
+
+  if (!silent) {
     alert(errorMsg);
   }
+};
+
+/**
+ * Obtenir la position utilisateur.
+ * @param silent - Si true, pas d'alerte en cas d'erreur (pour le chargement automatique)
+ * @param centerMap - Si true, centre la carte sur la position obtenue
+ */
+const getUserLocation = async (silent: boolean = false, centerMap: boolean = true) => {
+  try {
+    console.log('📍 Demande de localisation...');
+    geoStatus.value = 'loading';
+
+    // Vérifier si la géolocalisation est disponible
+    if (!navigator.geolocation) {
+      if (!silent) alert('La géolocalisation n\'est pas supportée par votre navigateur');
+      geoStatus.value = 'error';
+      geoErrorMsg.value = 'Géolocalisation non supportée';
+      return;
+    }
+
+    // Vérifier les permissions
+    const hasPermission = await checkAndRequestGeoPermissions(silent);
+    if (!hasPermission) {
+      geoStatus.value = 'error';
+      geoErrorMsg.value = 'Permission refusée';
+      return;
+    }
+
+    // Obtenir la position
+    const coordinates = await getCoordinates({
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0,
+    });
+
+    const { latitude, longitude, accuracy } = coordinates.coords;
+    console.log(`✅ Position obtenue: ${latitude}, ${longitude}, Précision: ${accuracy}m`);
+
+    geoStatus.value = 'active';
+    geoErrorMsg.value = '';
+
+    // Mettre à jour le marqueur sur la carte
+    updateUserMarker(latitude, longitude, accuracy || 50, centerMap);
+
+    // Ouvrir le popup seulement si action manuelle
+    if (!silent && userMarker) {
+      userMarker.openPopup();
+    }
+
+    // Démarrer le suivi continu si pas encore actif
+    if (!isTrackingPosition.value) {
+      startWatchingPosition();
+    }
+  } catch (error: any) {
+    handleGeoError(error, silent);
+  }
+};
+
+/**
+ * Démarrer le suivi continu de la position utilisateur via watchPosition.
+ * Met à jour le marqueur et la position en temps réel.
+ */
+const startWatchingPosition = async () => {
+  if (isTrackingPosition.value) {
+    console.log('📍 Suivi de position déjà actif');
+    return;
+  }
+
+  try {
+    console.log('📍 Démarrage du suivi continu de la position...');
+    isTrackingPosition.value = true;
+
+    geoWatchId = await Geolocation.watchPosition(
+      {
+        enableHighAccuracy: true,
+        timeout: 30000,
+        maximumAge: 5000,
+      },
+      (position: any, err: any) => {
+        if (err) {
+          console.warn('⚠️ Erreur watchPosition:', err);
+          // Ne pas changer le statut en erreur pour une erreur ponctuelle du watch
+          return;
+        }
+
+        if (position) {
+          const { latitude, longitude, accuracy } = position.coords;
+          console.log(`🔄 Position mise à jour: ${latitude.toFixed(6)}, ${longitude.toFixed(6)}, Précision: ${(accuracy || 0).toFixed(0)}m`);
+          
+          geoStatus.value = 'active';
+          geoErrorMsg.value = '';
+          
+          // Mettre à jour le marqueur sans recentrer la carte (l'utilisateur peut avoir bougé la vue)
+          updateUserMarker(latitude, longitude, accuracy || 50, false);
+        }
+      }
+    );
+
+    console.log('✅ Suivi continu de la position démarré (watchId:', geoWatchId, ')');
+  } catch (watchError: any) {
+    console.warn('⚠️ Impossible de démarrer le suivi continu:', watchError);
+    isTrackingPosition.value = false;
+
+    // Fallback: utiliser un setInterval avec getCurrentPosition pour les navigateurs web
+    console.log('📍 Fallback: suivi par intervalle (10s)');
+    isTrackingPosition.value = true;
+    const intervalId = setInterval(async () => {
+      if (!isTrackingPosition.value) {
+        clearInterval(intervalId);
+        return;
+      }
+      try {
+        const coords = await getCoordinates({
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 5000,
+        });
+        const { latitude, longitude, accuracy } = coords.coords;
+        geoStatus.value = 'active';
+        updateUserMarker(latitude, longitude, accuracy || 50, false);
+      } catch (e) {
+        console.warn('⚠️ Erreur mise à jour position intervalle:', e);
+      }
+    }, 10000);
+
+    // Stocker l'interval ID comme watchId pour le nettoyage
+    geoWatchId = intervalId.toString();
+  }
+};
+
+/**
+ * Arrêter le suivi continu de la position.
+ */
+const stopWatchingPosition = async () => {
+  if (!isTrackingPosition.value) return;
+
+  console.log('📍 Arrêt du suivi de position...');
+  isTrackingPosition.value = false;
+
+  if (geoWatchId) {
+    try {
+      await Geolocation.clearWatch({ id: geoWatchId });
+    } catch (e) {
+      // Fallback: essayer de clear l'intervalle
+      try {
+        clearInterval(parseInt(geoWatchId));
+      } catch (_) {
+        // ignore
+      }
+    }
+    geoWatchId = null;
+  }
+
+  geoStatus.value = 'idle';
+  console.log('✅ Suivi de position arrêté');
 };
 
 // Charger les routes depuis l'API avec détails complets et cache
@@ -615,6 +908,9 @@ const fetchRoads = async (forceRefresh = false) => {
     roads.value.forEach(road => {
       addMarkerToMap(road);
     });
+
+    // Ajouter les marqueurs de signalement (Task 206)
+    addReportMarkersToMap();
 
     // Ajuster automatiquement la vue pour voir tous les marqueurs
     if (roads.value.length > 0 && markerGroup) {
@@ -870,6 +1166,113 @@ const addMarkerToMap = (road: Road) => {
   markers[road.id] = marker;
 };
 
+// Créer une icône pour les marqueurs de signalement
+const createReportIcon = (type: string) => {
+  const info = getReportTypeInfo(type);
+  return L.divIcon({
+    html: `
+      <div style="
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        background-color: ${info.color};
+        border-radius: 50% 50% 50% 0;
+        border: 2px solid white;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+        transform: rotate(-45deg);
+        cursor: pointer;
+      ">
+        <span style="transform: rotate(45deg); font-size: 16px;">${info.icon}</span>
+      </div>
+    `,
+    className: 'report-marker',
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+    popupAnchor: [0, -32],
+  });
+};
+
+// Ajouter les marqueurs de signalements sur la carte (Task 206)
+const addReportMarkersToMap = () => {
+  if (!map) return;
+
+  // Créer le groupe de marqueurs de signalement s'il n'existe pas
+  if (!reportMarkerGroup) {
+    reportMarkerGroup = L.featureGroup().addTo(map);
+  } else {
+    reportMarkerGroup.clearLayers();
+  }
+
+  // Vider le dictionnaire
+  Object.keys(reportMarkers).forEach(k => delete reportMarkers[k as any]);
+
+  reports.value.forEach((report: Report) => {
+    let lat: number | undefined;
+    let lng: number | undefined;
+
+    // Position directe du signalement
+    if (report.latitude && report.longitude) {
+      lat = typeof report.latitude === 'string' ? parseFloat(report.latitude as any) : report.latitude;
+      lng = typeof report.longitude === 'string' ? parseFloat(report.longitude as any) : report.longitude;
+    }
+    // Sinon, déduire de la route associée
+    else if (report.road_id) {
+      const road = roads.value.find((r: Road) => r.id === report.road_id);
+      if (road) {
+        lat = road.latitude + (Math.random() - 0.5) * 0.0008;
+        lng = road.longitude + (Math.random() - 0.5) * 0.0008;
+      }
+    }
+    // Sinon, utiliser les données de la route incluse
+    else if (report.road) {
+      lat = report.road.latitude;
+      lng = report.road.longitude;
+    }
+
+    if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+
+    const info = getReportTypeInfo(report.target_type);
+    const photoHtml = report.photo_path 
+      ? `<div style="margin: 8px 0; text-align: center;"><img src="/storage/${report.photo_path}" alt="Photo" style="max-width:100%; max-height:120px; border-radius:6px; object-fit:cover;" onerror="this.style.display='none'" /></div>` 
+      : '';
+    const popupContent = `
+      <div style="font-family: 'Segoe UI', sans-serif; font-size: 13px; min-width: 200px;">
+        <div style="
+          background: ${info.color};
+          color: white;
+          padding: 10px 12px;
+          border-radius: 8px 8px 0 0;
+          margin: -10px -10px 10px -10px;
+        ">
+          <strong>${info.icon} ${info.label}</strong>
+        </div>
+        <div style="padding: 0 4px;">
+          <p style="margin: 0 0 6px; color: #333;"><strong>Description:</strong> ${report.reason || 'Non renseignée'}</p>
+          ${photoHtml}
+          <p style="margin: 0 0 6px; color: #666; font-size: 12px;">📅 ${report.report_date || report.created_at || 'Date inconnue'}</p>
+          ${report.road ? `<p style="margin: 0 0 6px; color: #666; font-size: 12px;">🛣️ Route: ${report.road.designation || 'N/A'}</p>` : ''}
+          <p style="margin: 0; color: #999; font-size: 11px;">📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}</p>
+        </div>
+      </div>
+    `;
+
+    const marker = L.marker([lat, lng], {
+      icon: createReportIcon(report.target_type),
+      zIndexOffset: 500,
+    }).bindPopup(popupContent, {
+      maxWidth: 280,
+      className: 'report-popup',
+    });
+
+    marker.addTo(reportMarkerGroup!);
+    reportMarkers[report.id] = marker;
+  });
+
+  console.log(`📌 ${Object.keys(reportMarkers).length} marqueurs de signalement ajoutés sur la carte`);
+};
+
 // Centrer la carte sur une route
 const centerMapOnRoad = (road: Road) => {
   if (!map) return;
@@ -917,32 +1320,134 @@ const togglePanel = () => {
   panelCollapsed.value = !panelCollapsed.value;
 };
 
+// Position effective pour le signalement (GPS ou sélection carte)
+const reportLocation = computed(() => {
+  return selectedLocation.value || currentLocation.value;
+});
+
 // Ouvrir le modal de signalement
 const router = useRouter();
 const openReportModal = async () => {
-  // Récupérer la position actuelle
-  try {
-    const coordinates = await Geolocation.getCurrentPosition({
-      enableHighAccuracy: true,
-      timeout: 10000,
-    });
-    currentLocation.value = {
-      lat: coordinates.coords.latitude,
-      lng: coordinates.coords.longitude
-    };
-  } catch (error) {
-    console.warn('Position non disponible:', error);
-    currentLocation.value = null;
-  }
-  
   // Vérifier le mode en ligne/hors ligne
   isOfflineMode.value = !isOnline();
   
   // Reset du formulaire
-  reportForm.value = { roadId: null, targetType: 'road', reason: '' };
+  selectedLocation.value = null;
+  reportForm.value = { roadId: null, targetType: 'nid_de_poule', reason: '' };
   reportError.value = '';
   reportSuccess.value = '';
   
+  // ⚡ Ouvrir le modal IMMÉDIATEMENT (ne pas attendre le GPS)
+  showReportModal.value = true;
+
+  // Récupérer la position GPS en arrière-plan si pas déjà disponible
+  if (!currentLocation.value) {
+    try {
+      const coordinates = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 10000,
+      });
+      currentLocation.value = {
+        lat: coordinates.coords.latitude,
+        lng: coordinates.coords.longitude
+      };
+    } catch (error) {
+      console.warn('Position non disponible:', error);
+    }
+  }
+};
+
+// Utiliser la position GPS pour le signalement
+const useGpsForReport = async () => {
+  try {
+    const coordinates = await getCoordinates({
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0,
+    });
+    selectedLocation.value = null; // Effacer la sélection manuelle
+    currentLocation.value = {
+      lat: coordinates.coords.latitude,
+      lng: coordinates.coords.longitude
+    };
+    console.log('📍 Position GPS utilisée pour le signalement');
+  } catch (error) {
+    console.warn('Position GPS non disponible:', error);
+    reportError.value = 'Impossible d\'obtenir la position GPS';
+  }
+};
+
+// Activer le mode sélection de position sur la carte (Task 209)
+const pickLocationOnMap = () => {
+  showReportModal.value = false; // Fermer le modal temporairement
+  isSelectingLocation.value = true;
+  
+  if (map) {
+    map.getContainer().style.cursor = 'crosshair';
+    map.once('click', onMapClickForLocation);
+  }
+};
+
+// Quand l'utilisateur clique sur la carte pour choisir un emplacement
+const onMapClickForLocation = (e: L.LeafletMouseEvent) => {
+  if (!isSelectingLocation.value) return;
+  
+  const { lat, lng } = e.latlng;
+  selectedLocation.value = { lat, lng };
+  
+  // Afficher un marqueur temporaire à l'emplacement sélectionné
+  if (map) {
+    if (locationPickerMarker) {
+      map.removeLayer(locationPickerMarker);
+    }
+    locationPickerMarker = L.marker([lat, lng], {
+      icon: L.divIcon({
+        html: `
+          <div style="
+            width: 36px; height: 36px;
+            background: #e53935;
+            border-radius: 50% 50% 50% 0;
+            border: 3px solid white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            transform: rotate(-45deg);
+            display: flex; align-items: center; justify-content: center;
+          ">
+            <span style="transform: rotate(45deg); font-size: 18px;">📍</span>
+          </div>
+        `,
+        className: 'picker-marker',
+        iconSize: [36, 36],
+        iconAnchor: [18, 36],
+      }),
+    }).addTo(map)
+      .bindPopup(`<strong>Position sélectionnée</strong><br>Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`)
+      .openPopup();
+  }
+  
+  // Fin du mode sélection
+  isSelectingLocation.value = false;
+  if (map) {
+    map.getContainer().style.cursor = '';
+  }
+  
+  console.log(`📍 Position sélectionnée sur la carte: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+  
+  // Réouvrir le modal de signalement
+  showReportModal.value = true;
+};
+
+// Annuler la sélection de position
+const cancelLocationSelection = () => {
+  isSelectingLocation.value = false;
+  if (map) {
+    map.getContainer().style.cursor = '';
+    map.off('click', onMapClickForLocation);
+  }
+  if (locationPickerMarker && map) {
+    map.removeLayer(locationPickerMarker);
+    locationPickerMarker = null;
+  }
+  // Réouvrir le modal
   showReportModal.value = true;
 };
 
@@ -971,8 +1476,8 @@ const submitQuickReport = async () => {
         report_date: reportDate,
         reason: reportForm.value.reason.trim(),
         road_id: reportForm.value.roadId,
-        latitude: currentLocation.value?.lat,
-        longitude: currentLocation.value?.lng,
+        latitude: reportLocation.value?.lat,
+        longitude: reportLocation.value?.lng,
       },
       userData.value.id
     );
@@ -980,12 +1485,58 @@ const submitQuickReport = async () => {
     if (result.success) {
       if (result.offline) {
         reportSuccess.value = '📴 Signalement sauvegardé localement. Il sera envoyé automatiquement quand la connexion sera rétablie.';
+        const offlineToast = await toastController.create({
+          message: '📴 Sauvegardé localement (mode hors-ligne)',
+          duration: 3000,
+          position: 'top',
+          color: 'warning',
+        });
+        await offlineToast.present();
       } else {
         reportSuccess.value = '✅ Signalement envoyé avec succès!';
+        
+        // Toast visible
+        const toast = await toastController.create({
+          message: '✅ Signalement envoyé avec succès!',
+          duration: 3000,
+          position: 'top',
+          color: 'success',
+        });
+        await toast.present();
+
+        // Si une photo a été prise et qu'on est en ligne, uploader via API directe
+        if (reportPhotoFile.value && result.data?.report?.id) {
+          try {
+            const formData = new FormData();
+            // Laravel ne lit pas les fichiers avec PUT HTTP natif
+            // Il faut utiliser POST + _method=PUT pour le method spoofing
+            formData.append('_method', 'PUT');
+            formData.append('photo', reportPhotoFile.value, 'photo.jpg');
+            formData.append('target_type', reportForm.value.targetType);
+            formData.append('report_date', reportDate);
+            formData.append('reason', reportForm.value.reason.trim());
+            if (reportForm.value.roadId) formData.append('road_id', reportForm.value.roadId.toString());
+            await api.post(`/reports/${result.data.report.id}`, formData);
+            console.log('📷 Photo uploadée pour le signalement');
+          } catch (photoErr) {
+            console.warn('⚠️ Photo non uploadée (non bloquant):', photoErr);
+          }
+        }
+
         // Recharger les signalements
         await fetchRoads();
       }
       
+      // Nettoyer photo
+      removeReportPhoto();
+
+      // Nettoyer le marqueur de sélection
+      if (locationPickerMarker && map) {
+        map.removeLayer(locationPickerMarker);
+        locationPickerMarker = null;
+      }
+      selectedLocation.value = null;
+
       // Fermer le modal après 2 secondes
       setTimeout(() => {
         showReportModal.value = false;
@@ -1041,6 +1592,9 @@ const refreshMarkers = () => {
   roads.value.forEach(road => {
     addMarkerToMap(road);
   });
+
+  // Rafraîchir aussi les marqueurs de signalement
+  addReportMarkersToMap();
 };
 
 const openReportForm = () => {
@@ -1107,20 +1661,52 @@ onMounted(() => {
     if (firebaseReports.length > 0) {
       console.log('🔄 Signalements mis à jour depuis Firebase');
       reports.value = firebaseReports;
+      // Rafraîchir les marqueurs de signalement en temps réel
+      addReportMarkersToMap();
     }
   });
   
   // Attendre que le DOM soit prêt
-  setTimeout(() => {
+  setTimeout(async () => {
     initMap();
-    fetchRoads();
+    await fetchRoads();
+    
+    // 🚀 Géolocalisation automatique au chargement de la carte
+    // Mode silencieux: pas d'alerte si l'utilisateur refuse ou si la position est indisponible
+    // Ne centre pas la carte si des routes sont déjà affichées
+    const shouldCenter = roads.value.length === 0;
+    console.log('📍 Géolocalisation automatique au chargement...');
+    await getUserLocation(true, shouldCenter);
   }, 100);
 });
 
-// Nettoyer les écouteurs Firebase quand le composant est détruit
-onUnmounted(() => {
-  console.log('Map.vue démontée - Nettoyage des écouteurs Firebase');
+// Nettoyer les écouteurs Firebase et géolocalisation quand le composant est détruit
+onUnmounted(async () => {
+  console.log('Map.vue démontée - Nettoyage des écouteurs Firebase et géolocalisation');
   unsubscribeAll();
+  
+  // Arrêter le suivi de position
+  await stopWatchingPosition();
+  
+  // Nettoyer les marqueurs de position
+  if (map) {
+    if (userMarker) {
+      map.removeLayer(userMarker);
+      userMarker = null;
+    }
+    if (userCircle) {
+      map.removeLayer(userCircle);
+      userCircle = null;
+    }
+    if (locationPickerMarker) {
+      map.removeLayer(locationPickerMarker);
+      locationPickerMarker = null;
+    }
+    if (reportMarkerGroup) {
+      map.removeLayer(reportMarkerGroup);
+      reportMarkerGroup = null;
+    }
+  }
 });
 </script>
 
@@ -1275,9 +1861,180 @@ onUnmounted(() => {
 .locate-btn {
   --background: #4CAF50 !important;
   --color: white !important;
+  position: relative;
 }
 
-/* Modal de signalement */
+.locate-btn.geo-active {
+  --background: #2E7D32 !important;
+  box-shadow: 0 0 12px rgba(76, 175, 80, 0.6) !important;
+}
+
+.locate-btn.geo-loading {
+  --background: #FF9800 !important;
+  animation: geo-pulse-btn 1.5s ease-in-out infinite;
+}
+
+.locate-btn.geo-error {
+  --background: #f44336 !important;
+}
+
+@keyframes geo-pulse-btn {
+  0%, 100% { box-shadow: 0 3px 10px rgba(255, 152, 0, 0.3); }
+  50% { box-shadow: 0 3px 20px rgba(255, 152, 0, 0.7); }
+}
+
+/* Points indicateurs de statut géolocalisation */
+.geo-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid white;
+}
+
+.geo-dot.active {
+  background: #4CAF50;
+  animation: geo-blink 2s ease-in-out infinite;
+}
+
+.geo-dot.error {
+  background: #f44336;
+}
+
+@keyframes geo-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.geo-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40px;
+  height: 40px;
+  margin-top: -20px;
+  margin-left: -20px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.6);
+  animation: geo-pulse-ring 1.5s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes geo-pulse-ring {
+  0% { transform: scale(0.5); opacity: 1; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* Barre de statut géolocalisation */
+.geo-status-bar {
+  position: fixed;
+  top: 180px;
+  left: 10px;
+  right: 10px;
+  z-index: 998;
+  border-radius: 10px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: white;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: opacity 0.3s ease;
+}
+
+.geo-status-bar.loading {
+  background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+}
+
+.geo-status-bar.error {
+  background: linear-gradient(135deg, #f44336 0%, #c62828 100%);
+}
+
+.geo-status-bar.active {
+  background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+}
+
+.geo-status-bar ion-icon {
+  font-size: 16px;
+}
+
+.geo-status-bar ion-spinner {
+  width: 16px;
+  height: 16px;
+}
+
+.geo-status-bar span {
+  flex: 1;
+}
+
+.geo-status-bar ion-button {
+  --color: white;
+  margin: 0;
+  height: 24px;
+}
+
+/* Modal de signalement - Forcer mode clair */
+.location-section {
+  margin-bottom: 16px;
+}
+
+ion-modal {
+  --ion-background-color: #ffffff;
+  --ion-text-color: #1a1a1a;
+  --ion-item-background: #ffffff;
+}
+
+ion-modal ion-toolbar {
+  --background: #1877f2;
+  --color: white;
+}
+
+ion-modal ion-title {
+  color: white;
+}
+
+ion-modal ion-button {
+  --color: white;
+}
+
+ion-modal ion-content {
+  --background: #ffffff;
+  --color: #1a1a1a;
+}
+
+ion-modal ion-item {
+  --background: #ffffff;
+  --color: #333333;
+  --border-color: #e0e0e0;
+}
+
+ion-modal ion-label {
+  color: #333333 !important;
+  --color: #333333;
+}
+
+ion-modal ion-select {
+  color: #333333;
+  --color: #333333;
+  --placeholder-color: #999999;
+}
+
+ion-modal ion-textarea {
+  color: #333333;
+  --color: #333333;
+  --placeholder-color: #999999;
+}
+
+ion-modal ion-input {
+  color: #333333;
+  --color: #333333;
+}
+
 .location-info {
   display: flex;
   align-items: center;
@@ -1285,14 +2042,142 @@ onUnmounted(() => {
   padding: 12px;
   background: #e3f2fd;
   border-radius: 8px;
-  margin-bottom: 15px;
+  margin-bottom: 10px;
   font-size: 13px;
   color: #1565c0;
 }
 
+.location-info.warning {
+  background: #fff3e0;
+  color: #e65100;
+}
+
 .location-info ion-icon {
   font-size: 20px;
-  color: #1877f2;
+  flex-shrink: 0;
+}
+
+.location-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.location-actions ion-button {
+  font-size: 12px;
+  --padding-start: 10px;
+  --padding-end: 10px;
+}
+
+.submit-report-btn {
+  margin-top: 16px;
+}
+
+/* Photo section in report modal */
+.photo-section-modal {
+  background: #f5f5f5;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+}
+.photo-label-modal {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+}
+.photo-btns-modal {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.photo-preview-modal {
+  text-align: center;
+  margin-top: 8px;
+}
+.photo-preview-modal img {
+  max-width: 100%;
+  max-height: 150px;
+  border-radius: 8px;
+  border: 2px solid #ddd;
+  object-fit: cover;
+}
+
+/* Bandeau mode sélection de localisation */
+.location-picker-bar {
+  position: fixed;
+  top: 70px;
+  left: 10px;
+  right: 10px;
+  z-index: 1001;
+  background: linear-gradient(135deg, #e53935 0%, #c62828 100%);
+  color: white;
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: 0 4px 15px rgba(229, 57, 53, 0.4);
+  animation: picker-pulse 2s ease-in-out infinite;
+}
+
+.location-picker-bar ion-icon {
+  font-size: 20px;
+}
+
+.location-picker-bar span {
+  flex: 1;
+}
+
+@keyframes picker-pulse {
+  0%, 100% { box-shadow: 0 4px 15px rgba(229, 57, 53, 0.4); }
+  50% { box-shadow: 0 4px 25px rgba(229, 57, 53, 0.7); }
+}
+
+/* Styles pour les popups de signalements */
+:deep(.report-popup) {
+  .leaflet-popup-content-wrapper {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    border: 2px solid #e53935;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .leaflet-popup-content {
+    margin: 0;
+    padding: 0;
+    line-height: 1.5;
+  }
+
+  .leaflet-popup-tip-container {
+    display: none;
+  }
+}
+
+/* Marqueur de sélection de position */
+:deep(.picker-marker) {
+  animation: picker-bounce 0.5s ease-out;
+}
+
+@keyframes picker-bounce {
+  0% { transform: translateY(-20px); opacity: 0; }
+  60% { transform: translateY(5px); opacity: 1; }
+  100% { transform: translateY(0); }
+}
+
+/* Marqueurs de signalement - animation */
+:deep(.report-marker) {
+  transition: transform 0.2s ease;
+}
+
+:deep(.report-marker:hover) {
+  transform: scale(1.2);
+  filter: brightness(1.1);
 }
 
 .error-message {

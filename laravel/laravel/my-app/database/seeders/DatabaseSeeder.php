@@ -27,5 +27,41 @@ class DatabaseSeeder extends Seeder
         ]);
         
         $this->command->info('✅ Toutes les données de test ont été générées !');
+
+
+        User::create([
+            'name' => 'Manager Default',
+            'email' => 'manager@example.com',
+            'password' => Hash::make('manager123'),
+            'role' => 'manager',
+            'is_active' => true,
+        ]);
+
+        // Utilisateur test
+        User::create([
+            'name' => 'Test User',
+            'email' => 'test@example.com',
+            'password' => Hash::make('test123'),
+            'role' => 'user',
+            'is_active' => true,
+        ]);
+
+        // Utilisateur supplémentaire
+        User::create([
+            'name' => 'Alice Dupont',
+            'email' => 'alice@example.com',
+            'password' => Hash::make('alice123'),
+            'role' => 'user',
+            'is_active' => true,
+        ]);
+
+        // Utilisateur pour test Postman
+        User::create([
+            'name' => 'User Example',
+            'email' => 'user@example.com',
+            'password' => Hash::make('password123'),
+            'role' => 'user',
+            'is_active' => true,
+        ]);
     }
 }
