@@ -1,0 +1,111 @@
+# Specifies intentionally untracked files to ignore when using Git
+# http://git-scm.com/docs/gitignore
+
+*~
+*.sw[mnpcod]
+.tmp
+*.tmp
+*.tmp.*
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+UserInterfaceState.xcuserstate
+$RECYCLE.BIN/
+
+*.log
+log.txt
+npm-debug.log*
+
+/.idea
+/.ionic
+/.sass-cache
+/.sourcemaps
+/.versions
+/.vscode/*
+!/.vscode/extensions.json
+/coverage
+/dist
+/node_modules
+/platforms
+/plugins
+/www
+
+# Android
+/android/build/
+/android/app/build/
+/android/capacitor-cordova-android-plugins/build/
+/android/.gradle/
+/android/.kotlin/
+/android/gradle/
+/android/gradlew
+/android/gradlew.bat
+/android/settings.gradle
+/android/variables.gradle
+/android/capacitor.settings.gradle
+/android/app/proguard-rules.pro
+/android/app/capacitor.build.gradle
+/android/app/src/
+/android/capacitor-cordova-android-plugins/src/
+/android/capacitor-cordova-android-plugins/.gradle/
+/android/capacitor-cordova-android-plugins/gradle/
+/android/capacitor-cordova-android-plugins/gradlew
+/android/capacitor-cordova-android-plugins/gradlew.bat
+/android/capacitor-cordova-android-plugins/settings.gradle
+/android/capacitor-cordova-android-plugins/variables.gradle
+/android/capacitor-cordova-android-plugins/capacitor.settings.gradle
+/android/capacitor-cordova-android-plugins/app/
+
+# Android build outputs
+*.apk
+*.aar
+*.ap_
+*.aab
+
+
+/vendor/
+
+# Node.js
+
+/node_modules/
+
+# Environnement
+
+.env
+.env.backup
+.env.production
+.env.local
+
+# Logs
+
+/storage/logs/
+*.log
+
+# Cache & fichiers générés
+
+/storage/framework/cache/
+/storage/framework/sessions/
+/storage/framework/views/
+/bootstrap/cache/
+
+# IDE
+
+.vscode/
+.idea/
+
+# OS
+
+.DS_Store
+Thumbs.db
+
+# Fichiers Office et temporaires
+
+*.xlsx
+*.xls
+*.xlsm
+*.pdf
+*.pptx
+*.pptx.pdf
+toDo/
+
+*.json

@@ -1,5 +1,52 @@
 /vendor/
 
+# Node.js
+
+/node_modules/
+
+
+# Build & dist
+/frontend/dev-dist/
+/frontend/dist/
+/frontend/node_modules/
+/laravel/laravel/my-app/node_modules/
+/laravel/laravel/my-app/vendor/
+/laravel/laravel/my-app/public/build/
+/laravel/laravel/my-app/public/storage/
+/laravel/laravel/my-app/storage/
+/frontend/android/build/
+/frontend/android/app/build/
+/frontend/android/capacitor-cordova-android-plugins/build/
+/frontend/android/.gradle/
+/frontend/android/.kotlin/
+/frontend/android/gradle/
+/frontend/android/gradlew
+/frontend/android/gradlew.bat
+/frontend/android/settings.gradle
+/frontend/android/variables.gradle
+/frontend/android/capacitor.settings.gradle
+/frontend/android/app/proguard-rules.pro
+/frontend/android/app/capacitor.build.gradle
+/frontend/android/app/src/
+/frontend/android/capacitor-cordova-android-plugins/src/
+/frontend/android/capacitor-cordova-android-plugins/.gradle/
+/frontend/android/capacitor-cordova-android-plugins/gradle/
+/frontend/android/capacitor-cordova-android-plugins/gradlew
+/frontend/android/capacitor-cordova-android-plugins/gradlew.bat
+/frontend/android/capacitor-cordova-android-plugins/settings.gradle
+/frontend/android/capacitor-cordova-android-plugins/variables.gradle
+/frontend/android/capacitor-cordova-android-plugins/capacitor.settings.gradle
+/frontend/android/capacitor-cordova-android-plugins/app/
+
+# Android build outputs
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Logs
+
+
 # Node
 node_modules/
 
@@ -19,31 +66,63 @@ laravel/laravel/my-app/storage/api-docs/
 
 
 # Environnement
+
+# Lock files (optionnel)
+/package-lock.json
+/frontend/package-lock.json
+/laravel/laravel/my-app/package-lock.json
+
+# Environnements
+
 .env
 .env.backup
 .env.production
 .env.local
 
+# SQLite
+/database/*.sqlite*
+/laravel/laravel/my-app/database/*.sqlite*
+
+# Docker
+.env.local
+/docker/
+/docker-compose.yml
+/Dockerfile
+
+# Office, PDF, etc.
+
 # Logs
+
 /storage/logs/
 *.log
 
 # Cache & fichiers générés
+
 /storage/framework/cache/
-/storage/framework/sessions/
-/storage/framework/views/
-/bootstrap/cache/
 
 # IDE
+/storage/framework/sessions/
+/storage/framework/views/
+
+# OS
+/bootstrap/cache/
+
+
+# Divers
+/run-emulator.sh
+/start-emulators.sh
+# IDE
+
 .vscode/
 .idea/
 
 # OS
+
 .DS_Store
 Thumbs.db
 
-
 # Fichiers Office et temporaires
+
 *.xlsx
 *.xls
 *.xlsm
@@ -53,6 +132,5 @@ Thumbs.db
 toDo/
 
 *.json
-  
-
-
+# Docker image
+/docker-image/

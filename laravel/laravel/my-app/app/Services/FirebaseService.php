@@ -1029,4 +1029,112 @@ class FirebaseService
 
         return $results;
     }
+
+    /**
+     * Tester la connexion Firebase
+     * 
+     * @return array ['status' => 'ok'|'error', 'message' => string]
+     */
+    public function testConnection(): array
+    {
+        try {
+            if (!$this->isConfigured) {
+                return [
+                    'status' => 'error',
+                    'message' => 'Firebase n\'est pas configuré',
+                ];
+            }
+
+            $check = $this->checkInternetConnection();
+
+            if ($check['connected']) {
+                return [
+                    'status' => 'ok',
+                    'message' => 'Connexion Firebase OK',
+                    'details' => $check,
+                ];
+            }
+
+            return [
+                'status' => 'ok',
+                'message' => 'Firebase configuré (mode mock/cache)',
+                'details' => $check,
+            ];
+        } catch (Exception $e) {
+            return [
+                'status' => 'error',
+                'message' => 'Erreur connexion Firebase: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Synchroniser un utilisateur vers Firebase Auth (mock)
+     * 
+     * @param \App\Models\User $user
+     * @return array Résultat de la synchronisation
+     */
+    public function syncUserToFirebase(\App\Models\User $user): array
+    {
+        $userData = [
+            'uid' => (string) $user->id,
+            'email' => $user->email,
+            'name' => $user->name,
+            'role' => $user->role ?? 'user',
+            'is_active' => $user->is_active ?? true,
+            'synced_at' => now()->toIso8601String(),
+        ];
+
+        $result = $this->syncModel('user', $user->id, $userData, 'firestore');
+
+        $this->log('User synced to Firebase', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+        ]);
+
+        return [
+            'status' => $result['success'] ? 'synced' : 'error',
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'name' => $user->name,
+            'message' => $result['message'] ?? '',
+        ];
+    }
+
+    /**
+     * Synchroniser tous les utilisateurs vers Firebase Auth (mock)
+     * 
+     * @return array Résultats par utilisateur
+     */
+    public function syncAllUsersToFirebase(): array
+    {
+        $users = \App\Models\User::all();
+        $results = [];
+
+        foreach ($users as $user) {
+            try {
+                $results[] = $this->syncUserToFirebase($user);
+            } catch (Exception $e) {
+                $results[] = [
+                    'status' => 'error',
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'name' => $user->name,
+                    'message' => $e->getMessage(),
+                ];
+                $this->logError('Sync user to Firebase', $e->getMessage(), [
+                    'user_id' => $user->id,
+                ]);
+            }
+        }
+
+        $this->log('All users synced to Firebase', [
+            'total' => count($results),
+            'synced' => count(array_filter($results, fn($r) => $r['status'] === 'synced')),
+            'errors' => count(array_filter($results, fn($r) => $r['status'] === 'error')),
+        ]);
+
+        return $results;
+    }
+
 }

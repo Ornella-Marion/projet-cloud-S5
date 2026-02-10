@@ -1,0 +1,16 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Règles pour la collection des signalements
+    match /reports/{reportId} {
+      // Authentification requise pour lire et écrire
+      allow read, write: if request.auth != null;
+      // Optionnel : restreindre la modification/suppression à l'auteur
+      // allow update, delete: if request.auth != null && request.auth.uid == resource.data.user_id;
+    }
+    // Par défaut, aucune lecture/écriture sur les autres collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
