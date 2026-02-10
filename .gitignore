@@ -11,6 +11,13 @@ android/
 # Docker images
 docker-image/
 
+# Frontend complet (node, android, build, etc.)
+frontend/
+
+# Swagger docs générés
+laravel/laravel/my-app/storage/api-docs/
+
+
 # Environnement
 .env
 .env.backup
