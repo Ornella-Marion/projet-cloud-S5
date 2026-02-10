@@ -1,5 +1,16 @@
 /vendor/
 
+# Node
+node_modules/
+
+# Android build
+frontend/android/
+android/
+
+
+# Docker images
+docker-image/
+
 # Environnement
 .env
 .env.backup
