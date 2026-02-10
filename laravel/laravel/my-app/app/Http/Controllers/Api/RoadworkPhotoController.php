@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Roadwork;
 use App\Models\RoadworkPhoto;
+use App\Models\Traits\NotificationTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -83,6 +84,14 @@ class RoadworkPhotoController extends Controller
             'taken_at' => $validated['taken_at'] ?? now(),
             'uploaded_by' => auth()->id(),
         ]);
+
+        // 🔔 Créer une notification automatiquement pour l'upload de photo
+        NotificationTrait::createPhotoUploadedNotification(
+            $roadwork->id,
+            $photo->id,
+            $validated['photo_type'],
+            auth()->id()
+        );
 
         return response()->json($photo->load('uploader'), 201);
     }

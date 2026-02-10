@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\Roadwork;
 use App\Models\StatusHistory;
+use App\Models\Traits\NotificationTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -160,6 +161,14 @@ class RoadworkController extends Controller
                 'changed_by' => auth()->id(),
                 'changed_at' => now(),
             ]);
+
+            // 🔔 Créer une notification automatiquement
+            NotificationTrait::createStatusChangeNotification(
+                $roadwork->id,
+                $oldStatus,
+                $validated['status'],
+                auth()->id()
+            );
         }
 
         $roadwork->update($validated);
