@@ -1,9 +1,13 @@
 /vendor/
 
+# Node.js
+/node_modules/
+
 # Environnement
 .env
 .env.backup
 .env.production
+.env.local
 
 # Logs
 /storage/logs/
@@ -22,3 +26,19 @@
 # OS
 .DS_Store
 Thumbs.db
+
+*.xlsx
+*.xls
+*.xlsm
+*.pdf
+*.pptx
+*.pptx.pdf
+toDo/
+
+*.json
+
+__MACOSX/
+
+
+# Ignorer android
+frontend/android/
