@@ -7,6 +7,10 @@ use App\Http\Controllers\Api\LoginAttemptAnalyticsController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\DataSourceController;
+use App\Http\Controllers\Api\RoadworkController;
+use App\Http\Controllers\Api\RoadworkPhotoController;
+use App\Http\Controllers\Api\NotificationController;
+use App\Http\Controllers\Api\FirebaseTokenController;
 
 // Route Swagger UI
 Route::get('/documentation', function () {
@@ -134,6 +138,49 @@ Route::prefix('users')->middleware(['auth:sanctum'])->group(function () {
 // Firebase Routes
 Route::middleware(['auth:sanctum'])->group(function () {
     include 'firebase-routes.php';
+});
+
+// Roadworks Routes
+Route::prefix('roadworks')->middleware(['auth:sanctum'])->group(function () {
+    Route::get('/', [RoadworkController::class, 'index']);
+    Route::post('/', [RoadworkController::class, 'store']);
+    Route::get('/{roadwork}', [RoadworkController::class, 'show']);
+    Route::put('/{roadwork}', [RoadworkController::class, 'update']);
+    Route::delete('/{roadwork}', [RoadworkController::class, 'destroy']);
+    Route::get('/{roadwork}/status-history', [RoadworkController::class, 'statusHistory']);
+    
+    // Photos routes
+    Route::get('/{roadwork}/photos', [RoadworkPhotoController::class, 'index']);
+    Route::post('/{roadwork}/photos', [RoadworkPhotoController::class, 'store']);
+});
+
+// Roadwork Photos Routes
+Route::prefix('roadwork-photos')->middleware(['auth:sanctum'])->group(function () {
+    Route::get('/{photo}', [RoadworkPhotoController::class, 'show']);
+    Route::delete('/{photo}', [RoadworkPhotoController::class, 'destroy']);
+});
+
+// Notifications Routes
+Route::prefix('notifications')->middleware(['auth:sanctum'])->group(function () {
+    Route::get('/', [NotificationController::class, 'index']);
+    Route::get('/unread-count', [NotificationController::class, 'unreadCount']);
+    Route::get('/{notification}', [NotificationController::class, 'show']);
+    Route::put('/{notification}/read', [NotificationController::class, 'markAsRead']);
+    Route::put('/{notification}/unread', [NotificationController::class, 'markAsUnread']);
+    Route::put('/mark-all-as-read', [NotificationController::class, 'markAllAsRead']);
+    Route::delete('/{notification}', [NotificationController::class, 'destroy']);
+});
+
+// Firebase Tokens Routes
+Route::prefix('firebase')->middleware(['auth:sanctum'])->group(function () {
+    Route::post('/register-token', [FirebaseTokenController::class, 'registerToken']);
+    Route::get('/tokens', [FirebaseTokenController::class, 'listTokens']);
+    Route::get('/tokens/active', [FirebaseTokenController::class, 'listActiveTokens']);
+    Route::get('/tokens/{token}', [FirebaseTokenController::class, 'showToken']);
+    Route::put('/tokens/{token}/deactivate', [FirebaseTokenController::class, 'deactivateToken']);
+    Route::put('/tokens/{token}/activate', [FirebaseTokenController::class, 'activateToken']);
+    Route::delete('/tokens/{token}', [FirebaseTokenController::class, 'deleteToken']);
+    Route::delete('/tokens/unused-cleanup', [FirebaseTokenController::class, 'cleanupUnusedTokens']);
 });
 
 // DataSource Routes (Firebase/PostgreSQL Switch)

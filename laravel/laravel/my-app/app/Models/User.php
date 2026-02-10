@@ -17,4 +17,44 @@ class User extends Authenticatable
     {
         return $this->hasMany(LoginAttempt::class);
     }
+
+    /**
+     * Relation: Un User a plusieurs Roadworks créés
+     */
+    public function roadworksCreated(): HasMany
+    {
+        return $this->hasMany(Roadwork::class, 'created_by');
+    }
+
+    /**
+     * Relation: Un User a plusieurs photos uploadées
+     */
+    public function photosUploaded(): HasMany
+    {
+        return $this->hasMany(RoadworkPhoto::class, 'uploaded_by');
+    }
+
+    /**
+     * Relation: Un User a plusieurs changements de statut effectués
+     */
+    public function statusChanges(): HasMany
+    {
+        return $this->hasMany(StatusHistory::class, 'changed_by');
+    }
+
+    /**
+     * Relation: Un User a plusieurs notifications
+     */
+    public function notifications(): HasMany
+    {
+        return $this->hasMany(Notification::class);
+    }
+
+    /**
+     * Relation: Un User a plusieurs tokens Firebase
+     */
+    public function firebaseTokens(): HasMany
+    {
+        return $this->hasMany(FirebaseToken::class);
+    }
 }
