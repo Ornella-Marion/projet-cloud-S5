@@ -5,6 +5,7 @@
         "This file is @generated automatically"
     ],
     "content-hash": "b1efcbb7d9b19e4f71d46031941f27ad",
+    "content-hash": "c95a8b736c9a9a5596a9159176ffb5a1",
     "packages": [
         {
             "name": "beste/clock",
@@ -494,6 +495,7 @@
             "time": "2026-01-16T06:31:36+00:00"
         },
         {
+
             "name": "dflydev/dot-access-data",
             "version": "v3.0.3",
             "source": {
@@ -3979,6 +3981,7 @@
             "time": "2026-01-25T14:56:51+00:00"
         },
         {
+
             "name": "psr/cache",
             "version": "3.0.0",
             "source": {
@@ -4843,6 +4846,7 @@
             "time": "2025-12-02T15:19:04+00:00"
         },
         {
+
             "name": "swagger-api/swagger-ui",
             "version": "v5.31.0",
             "source": {
@@ -4904,6 +4908,7 @@
             "time": "2025-12-11T15:57:42+00:00"
         },
         {
+
             "name": "symfony/clock",
             "version": "v7.4.0",
             "source": {

@@ -72,6 +72,15 @@ Route::prefix('auth')->group(function () {
      Route::post('/register', [AuthController::class, 'signup']) // Ajout de la route conventionnelle
         ->middleware('throttle:5,1');
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:6,1'); 
+
+
+Route::prefix('auth')->group(function () {
+    Route::post('/signup', [AuthController::class, 'signup'])
+        ->middleware('throttle:5,1');
+    Route::post('/register', [AuthController::class, 'signup']) // Ajout de la route conventionnelle
+        ->middleware('throttle:5,1');
+    Route::post('/login', [AuthController::class, 'login'])
+        ->middleware('throttle:6,1');  // 6 tentatives par minute
     Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
     Route::put('/profile', [AuthController::class, 'updateProfile'])->middleware('auth:sanctum');
     Route::post('/unlock-account/{userId}', [AuthController::class, 'unlockAccount'])->middleware('auth:sanctum');
@@ -83,6 +92,8 @@ Route::prefix('auth')->group(function () {
     Route::post('/unlock-account/{userId}', [AuthController::class, 'unlockAccount'])->middleware('auth:sanctum');
     // Inscription par le manager uniquement
     Route::post('/manager-signup', [AuthController::class, 'managerSignup'])->middleware('auth:sanctum');
+    Route::post('/refresh', [AuthController::class, 'refreshToken'])->middleware('auth:sanctum');
+    Route::post('/auth/login', [AuthController::class, 'login']);
 });
 
 // Routes Admin - Account Management
@@ -118,6 +129,7 @@ Route::prefix('admin')->middleware(['auth:sanctum'])->group(function () {
 });
 
 
+// Routes User Management
 Route::prefix('users')->middleware(['auth:sanctum'])->group(function () {
     // Routes pour le profil de l'utilisateur connecté (doit être avant les routes paramétrées)
     Route::get('/me', [UserController::class, 'getProfile']);
@@ -142,6 +154,8 @@ Route::prefix('users')->middleware(['auth:sanctum'])->group(function () {
         ->middleware('role:manager');
 });
 
+
+// Firebase Routes
 Route::middleware(['auth:sanctum'])->group(function () {
     include 'firebase-routes.php';
 });
@@ -188,6 +202,7 @@ Route::prefix('firebase')->middleware(['auth:sanctum'])->group(function () {
     Route::delete('/tokens/{token}', [FirebaseTokenController::class, 'deleteToken']);
     Route::delete('/tokens/unused-cleanup', [FirebaseTokenController::class, 'cleanupUnusedTokens']);
 });
+
 
 
 // DataSource Routes (Firebase/PostgreSQL Switch)
@@ -248,6 +263,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // #110 — Synchronisation Firebase (Manager only)
     Route::post('/manager/sync', [AuthController::class, 'syncFirebase']);
+
 });
 
 Route::get('/health', function () {

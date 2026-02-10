@@ -45,6 +45,26 @@
 *.aab
 
 # Logs
+
+
+# Node
+node_modules/
+
+# Android build
+frontend/android/
+android/
+
+
+# Docker images
+docker-image/
+
+# Frontend complet (node, android, build, etc.)
+frontend/
+
+# Swagger docs générés
+laravel/laravel/my-app/storage/api-docs/
+
+
 # Environnement
 
 # Lock files (optionnel)
@@ -57,6 +77,7 @@
 .env
 .env.backup
 .env.production
+.env.local
 
 # SQLite
 /database/*.sqlite*
@@ -111,6 +132,5 @@ Thumbs.db
 toDo/
 
 *.json
-
 # Docker image
 /docker-image/
