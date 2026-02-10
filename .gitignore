@@ -2,7 +2,11 @@
 
 # Node.js
 
+
 /node_modules/
+
+
+/laravel/__MACOSX/
 
 
 # Build & dist
@@ -91,6 +95,7 @@ laravel/laravel/my-app/storage/api-docs/
 
 # Office, PDF, etc.
 
+
 # Logs
 
 /storage/logs/
@@ -121,7 +126,9 @@ laravel/laravel/my-app/storage/api-docs/
 .DS_Store
 Thumbs.db
 
+
 # Fichiers Office et temporaires
+
 
 *.xlsx
 *.xls
@@ -132,5 +139,12 @@ Thumbs.db
 toDo/
 
 *.json
+
+# Ignorer android
+frontend/android/
+
+
+
 # Docker image
 /docker-image/
+

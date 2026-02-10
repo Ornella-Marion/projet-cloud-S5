@@ -1,0 +1,8 @@
+node_modules
+dist
+android
+.git
+.vscode
+*.md
+cypress
+tests
