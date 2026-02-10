@@ -1,0 +1,25 @@
+{
+  "emulators": {
+    "auth": {
+      "port": 9098
+    },
+    "ui": {
+      "enabled": true,
+      "port": 4001
+    }
+  },
+  "hosting": {
+    "public": "dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

@@ -1,0 +1,871 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "API Signalements Routiers - Antananarivo",
+    "description": "API REST pour la gestion des signalements routiers, travaux et statistiques à Antananarivo. Projet Cloud S5.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Équipe Projet Cloud S5"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000/api",
+      "description": "Serveur local Docker"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Sanctum Token",
+        "description": "Token obtenu via POST /api/auth/login ou POST /api/auth/signup"
+      }
+    },
+    "schemas": {
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "role": { "type": "string", "enum": ["user", "visitor", "manager"] },
+          "is_active": { "type": "boolean" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Road": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "designation": { "type": "string" },
+          "longitude": { "type": "number" },
+          "latitude": { "type": "number" },
+          "area": { "type": "number" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "Report": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "user_id": { "type": "integer" },
+          "road_id": { "type": "integer", "nullable": true },
+          "target_type": { "type": "string" },
+          "report_date": { "type": "string", "format": "date" },
+          "reason": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "in_progress", "resolved", "rejected"] },
+          "photo_path": { "type": "string", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "user": { "$ref": "#/components/schemas/User" },
+          "road": { "$ref": "#/components/schemas/Road" }
+        }
+      },
+      "Roadwork": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "budget": { "type": "number" },
+          "finished_at": { "type": "string", "format": "date-time", "nullable": true },
+          "status_id": { "type": "integer" },
+          "road_id": { "type": "integer" },
+          "enterprise_id": { "type": "integer", "nullable": true },
+          "status": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "integer" },
+              "label": { "type": "string" },
+              "percentage": { "type": "number" }
+            }
+          },
+          "enterprise": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "id": { "type": "integer" },
+              "designation": { "type": "string" }
+            }
+          }
+        }
+      },
+      "Statistics": {
+        "type": "object",
+        "properties": {
+          "total_roads": { "type": "integer", "description": "Nombre total de routes (#104)" },
+          "total_roadworks": { "type": "integer" },
+          "total_reports": { "type": "integer" },
+          "total_budget": { "type": "number", "description": "Budget total en Ariary (#107)" },
+          "total_area": { "type": "number", "description": "Surface totale en m² (#105)" },
+          "advancement_percentage": { "type": "number", "description": "Avancement global en % (#106)" },
+          "roadworks_by_status": { "type": "object" },
+          "reports_by_type": { "type": "object" },
+          "reports_by_status": { "type": "object" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/auth/signup": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Créer un nouveau compte",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password", "name"],
+                "properties": {
+                  "email": { "type": "string", "format": "email", "example": "user@example.com" },
+                  "password": { "type": "string", "minLength": 6, "example": "password123" },
+                  "name": { "type": "string", "example": "Jean Dupont" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Compte créé avec succès",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "token": { "type": "string" },
+                    "user": { "$ref": "#/components/schemas/User" }
+                  }
+                }
+              }
+            }
+          },
+          "422": { "description": "Données invalides" }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Se connecter",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email", "example": "manager@test.com" },
+                  "password": { "type": "string", "example": "password123" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Connexion réussie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "token": { "type": "string" },
+                    "user": { "$ref": "#/components/schemas/User" },
+                    "expires_in": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Email ou mot de passe incorrect / Compte verrouillé" }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": ["Authentication"],
+        "summary": "Se déconnecter",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Déconnexion réussie" },
+          "401": { "description": "Non authentifié" }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": ["Authentication"],
+        "summary": "Récupérer les infos de l'utilisateur connecté",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Infos utilisateur",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": { "$ref": "#/components/schemas/User" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Non authentifié" }
+        }
+      }
+    },
+    "/auth/profile": {
+      "put": {
+        "tags": ["Authentication"],
+        "summary": "Mettre à jour le profil",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "email": { "type": "string", "format": "email" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Profil mis à jour" },
+          "401": { "description": "Non authentifié" }
+        }
+      }
+    },
+    "/auth/manager-signup": {
+      "post": {
+        "tags": ["Manager"],
+        "summary": "#109 — Créer un utilisateur mobile (Manager only)",
+        "description": "Crée un utilisateur dans Laravel ET Firebase. Réservé aux managers.",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password", "name", "role"],
+                "properties": {
+                  "email": { "type": "string", "format": "email", "example": "newuser@test.com" },
+                  "password": { "type": "string", "minLength": 6, "example": "password123" },
+                  "name": { "type": "string", "example": "Nouvel Utilisateur" },
+                  "role": { "type": "string", "enum": ["user", "visitor"], "example": "user" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Utilisateur créé (Laravel + Firebase)" },
+          "403": { "description": "Accès refusé - Manager uniquement" },
+          "422": { "description": "Données invalides" }
+        }
+      }
+    },
+    "/auth/locked-accounts": {
+      "get": {
+        "tags": ["Manager"],
+        "summary": "#111 — Liste des utilisateurs bloqués (Manager only)",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Liste des comptes bloqués",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "integer" },
+                      "name": { "type": "string" },
+                      "email": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": { "description": "Non autorisé" }
+        }
+      }
+    },
+    "/auth/unlock-account/{userId}": {
+      "post": {
+        "tags": ["Manager"],
+        "summary": "Débloquer un compte utilisateur (Manager only)",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Compte débloqué" },
+          "403": { "description": "Non autorisé" },
+          "404": { "description": "Utilisateur non trouvé" }
+        }
+      }
+    },
+    "/manager/sync": {
+      "post": {
+        "tags": ["Manager"],
+        "summary": "#110 — Synchronisation Firebase (Manager only)",
+        "description": "Synchronise tous les utilisateurs Laravel vers Firebase Auth",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Synchronisation terminée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "total_users": { "type": "integer" },
+                    "synced": { "type": "integer" },
+                    "already_exists": { "type": "integer" },
+                    "failed": { "type": "integer" },
+                    "errors": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          },
+          "403": { "description": "Accès refusé" }
+        }
+      }
+    },
+    "/reports": {
+      "get": {
+        "tags": ["Signalements"],
+        "summary": "#94 — Lister tous les signalements",
+        "description": "Supporte le filtrage: ?user_id= (#102), ?status= (#103), ?road_id=",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "description": "#102 — Filtrer par ID utilisateur",
+            "schema": { "type": "integer" }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "#103 — Filtrer par statut",
+            "schema": { "type": "string", "enum": ["pending", "in_progress", "resolved", "rejected"] }
+          },
+          {
+            "name": "road_id",
+            "in": "query",
+            "description": "Filtrer par ID route",
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Liste des signalements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Report" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Signalements"],
+        "summary": "#95 + #101 — Créer un signalement (avec upload photo possible)",
+        "description": "Envoyer en JSON (sans photo) ou en form-data (avec photo). #99 — Validation via StoreReportRequest.",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["target_type", "report_date", "reason"],
+                "properties": {
+                  "target_type": { "type": "string", "maxLength": 50, "example": "nid_de_poule" },
+                  "report_date": { "type": "string", "format": "date", "example": "2026-02-09" },
+                  "reason": { "type": "string", "example": "Grand trou dangereux" },
+                  "road_id": { "type": "integer", "nullable": true, "example": 1 }
+                }
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": ["target_type", "report_date", "reason"],
+                "properties": {
+                  "target_type": { "type": "string" },
+                  "report_date": { "type": "string", "format": "date" },
+                  "reason": { "type": "string" },
+                  "road_id": { "type": "integer" },
+                  "photo": { "type": "string", "format": "binary", "description": "Image JPG/PNG/GIF, max 5 Mo" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Signalement créé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "report": { "$ref": "#/components/schemas/Report" }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Non authentifié" },
+          "422": { "description": "Données invalides" }
+        }
+      }
+    },
+    "/reports/my": {
+      "get": {
+        "tags": ["Signalements"],
+        "summary": "#102 — Mes signalements",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Liste des signalements de l'utilisateur connecté",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Report" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/{id}": {
+      "get": {
+        "tags": ["Signalements"],
+        "summary": "#96 — Voir un signalement",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Détail du signalement",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Report" }
+              }
+            }
+          },
+          "404": { "description": "Non trouvé" }
+        }
+      },
+      "put": {
+        "tags": ["Signalements"],
+        "summary": "#97 + #100 — Modifier un signalement (Manager only)",
+        "description": "Validation via UpdateReportRequest. Seuls les managers peuvent modifier.",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "target_type": { "type": "string" },
+                  "report_date": { "type": "string", "format": "date" },
+                  "reason": { "type": "string" },
+                  "road_id": { "type": "integer", "nullable": true },
+                  "status": { "type": "string", "enum": ["pending", "in_progress", "resolved", "rejected"] }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Signalement mis à jour" },
+          "403": { "description": "Accès refusé - Manager uniquement" },
+          "404": { "description": "Non trouvé" }
+        }
+      },
+      "delete": {
+        "tags": ["Signalements"],
+        "summary": "#98 — Supprimer un signalement (Manager only)",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Signalement supprimé" },
+          "403": { "description": "Accès refusé - Manager uniquement" },
+          "404": { "description": "Non trouvé" }
+        }
+      }
+    },
+    "/roads": {
+      "get": {
+        "tags": ["Routes"],
+        "summary": "Lister toutes les routes",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Liste des routes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Road" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Routes"],
+        "summary": "Créer une route",
+        "security": [{ "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["designation", "longitude", "latitude", "area"],
+                "properties": {
+                  "designation": { "type": "string", "example": "Route Nationale 7" },
+                  "longitude": { "type": "number", "example": 47.52 },
+                  "latitude": { "type": "number", "example": -18.88 },
+                  "area": { "type": "number", "example": 3.5 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Route créée" },
+          "422": { "description": "Données invalides" }
+        }
+      }
+    },
+    "/roads/{id}": {
+      "get": {
+        "tags": ["Routes"],
+        "summary": "Voir une route",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Détail de la route" },
+          "404": { "description": "Non trouvé" }
+        }
+      },
+      "put": {
+        "tags": ["Routes"],
+        "summary": "Modifier une route",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "designation": { "type": "string" },
+                  "longitude": { "type": "number" },
+                  "latitude": { "type": "number" },
+                  "area": { "type": "number" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Route mise à jour" },
+          "404": { "description": "Non trouvé" }
+        }
+      },
+      "delete": {
+        "tags": ["Routes"],
+        "summary": "Supprimer une route",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Route supprimée" },
+          "404": { "description": "Non trouvé" }
+        }
+      }
+    },
+    "/roads/{id}/status": {
+      "put": {
+        "tags": ["Manager"],
+        "summary": "#112 — Modifier le statut des travaux d'une route (Manager only)",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "ID de la route" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["status_id"],
+                "properties": {
+                  "status_id": { "type": "integer", "description": "ID du statut (voir GET /api/statuses)", "example": 2 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Statut mis à jour" },
+          "403": { "description": "Accès refusé - Manager uniquement" },
+          "404": { "description": "Route non trouvée" }
+        }
+      }
+    },
+    "/roads/{id}/road-details": {
+      "put": {
+        "tags": ["Manager"],
+        "summary": "#113 — Modifier les détails d'une route (Manager only)",
+        "description": "Modifie surface, budget, entreprise, date fin travaux",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "area": { "type": "number", "description": "Surface en m²", "example": 5.5 },
+                  "designation": { "type": "string", "example": "Nouvelle désignation" },
+                  "budget": { "type": "number", "description": "Budget en Ariary", "example": 50000000 },
+                  "enterprise_id": { "type": "integer", "description": "ID de l'entreprise", "example": 1 },
+                  "finished_at": { "type": "string", "format": "date", "nullable": true, "example": "2026-12-31" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Détails mis à jour" },
+          "403": { "description": "Accès refusé - Manager uniquement" },
+          "404": { "description": "Route non trouvée" }
+        }
+      }
+    },
+    "/statistics": {
+      "get": {
+        "tags": ["Statistiques"],
+        "summary": "#104-108 — Statistiques globales",
+        "description": "Route publique. Retourne: total routes (#104), surface totale (#105), avancement % (#106), budget total (#107).",
+        "responses": {
+          "200": {
+            "description": "Statistiques globales",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Statistics" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/statuses": {
+      "get": {
+        "tags": ["Statistiques"],
+        "summary": "Liste des statuts disponibles",
+        "responses": {
+          "200": {
+            "description": "Liste des statuts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "integer" },
+                      "label": { "type": "string" },
+                      "percentage": { "type": "number" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/enterprises": {
+      "get": {
+        "tags": ["Statistiques"],
+        "summary": "Liste des entreprises",
+        "responses": {
+          "200": {
+            "description": "Liste des entreprises",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "integer" },
+                      "designation": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/roadworks": {
+      "get": {
+        "tags": ["Travaux Routiers"],
+        "summary": "Liste de tous les travaux routiers",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Liste des travaux",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Roadwork" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/roads-details": {
+      "get": {
+        "tags": ["Travaux Routiers"],
+        "summary": "Toutes les routes avec détails complets",
+        "security": [{ "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Routes avec travaux, statut, budget, entreprise" }
+        }
+      }
+    },
+    "/roads/{roadId}/details": {
+      "get": {
+        "tags": ["Travaux Routiers"],
+        "summary": "Détails complets d'une route",
+        "security": [{ "BearerAuth": [] }],
+        "parameters": [
+          { "name": "roadId", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Détails de la route avec travaux et signalements récents" },
+          "404": { "description": "Route non trouvée" }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": ["Utilisateurs"],
+        "summary": "Liste des utilisateurs (public)",
+        "responses": {
+          "200": {
+            "description": "Liste id/name/email",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "integer" },
+                      "name": { "type": "string" },
+                      "email": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": ["Système"],
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "API opérationnelle",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": { "type": "string", "example": "OK" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    { "name": "Authentication", "description": "Inscription, connexion, déconnexion, profil" },
+    { "name": "Signalements", "description": "CRUD des signalements routiers (reports)" },
+    { "name": "Routes", "description": "CRUD des routes (roads)" },
+    { "name": "Manager", "description": "Fonctions réservées aux managers" },
+    { "name": "Statistiques", "description": "Statistiques globales et données de référence" },
+    { "name": "Travaux Routiers", "description": "Gestion des travaux routiers (roadworks)" },
+    { "name": "Utilisateurs", "description": "Gestion des utilisateurs" },
+    { "name": "Système", "description": "Health check et infos système" }
+  ]
+}

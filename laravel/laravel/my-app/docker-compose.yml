@@ -1,6 +1,20 @@
 version: '3.9'
 
 services:
+  # ======== FRONTEND Ionic/Vue.js ========
+  frontend:
+    build:
+      context: ../../../frontend
+      dockerfile: Dockerfile
+    container_name: ionic_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - web
+    networks:
+      - laravel
+
+  # ======== BACKEND Laravel ========
   app:
     build:
       context: .
@@ -46,7 +60,7 @@ services:
       POSTGRES_USER: laravel
       POSTGRES_PASSWORD: root
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -66,7 +80,7 @@ services:
     ports:
       - "8081:8080"
     environment:
-      SWAGGER_JSON_URL: /openapi.json
+      SWAGGER_JSON: /openapi.json
     volumes:
       - ./openapi.json:/openapi.json:ro
     networks:
@@ -76,7 +90,7 @@ services:
     image: maptiler/tileserver-gl:latest
     container_name: laravel_tileserver
     ports:
-      - "8082:80"
+      - "8082:8080"
     volumes:
       - ./tiles:/data
     command: ["--port", "80", "/data/antananarivo.mbtiles"]
