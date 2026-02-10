@@ -11,6 +11,7 @@ use App\Http\Controllers\Api\RoadworkController;
 use App\Http\Controllers\Api\RoadworkPhotoController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\FirebaseTokenController;
+use App\Http\Controllers\Api\StatisticsController;
 
 // Route Swagger UI
 Route::get('/documentation', function () {
@@ -199,6 +200,13 @@ Route::middleware(['auth:sanctum'])->prefix('datasource')->group(function () {
 
     Route::post('/test', [DataSourceController::class, 'testDataSource'])
         ->name('datasource.test');
+});
+
+// Statistics Routes
+Route::prefix('statistics')->middleware(['auth:sanctum'])->group(function () {
+    Route::get('/average-delay', [StatisticsController::class, 'averageDelay']);
+    Route::get('/delay-by-location', [StatisticsController::class, 'delayByLocation']);
+    Route::get('/summary', [StatisticsController::class, 'summary']);
 });
 
 Route::get('/health', function () {

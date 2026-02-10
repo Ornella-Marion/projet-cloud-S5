@@ -142,6 +142,17 @@ class RoadworkController extends Controller
 
         // Si le statut change, créer un enregistrement dans status_history
         if (isset($validated['status']) && $validated['status'] !== $oldStatus) {
+            // Enregistrer automatiquement started_at quand on passe à "in_progress"
+            if ($validated['status'] === 'in_progress' && !isset($validated['started_at'])) {
+                $validated['started_at'] = now();
+            }
+
+            // Enregistrer automatiquement completed_at quand on passe à "completed"
+            if ($validated['status'] === 'completed' && !isset($validated['completed_at'])) {
+                $validated['completed_at'] = now();
+            }
+
+            // Créer l'entrée status_history
             StatusHistory::create([
                 'roadwork_id' => $roadwork->id,
                 'old_status' => $oldStatus,
