@@ -1,4 +1,18 @@
 services:
+  # ======== FRONTEND Ionic/Vue.js ========
+  frontend:
+    build:
+      context: ../../../frontend
+      dockerfile: Dockerfile
+    container_name: ionic_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - web
+    networks:
+      - laravel
+
+  # ======== BACKEND Laravel ========
   app:
     build:
       context: .
